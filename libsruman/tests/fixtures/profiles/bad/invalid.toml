@@ -1,0 +1,13 @@
+name = "invalid"
+prefix = "relative/prefix"
+wrappers = [""]
+shader_cache = "cache"
+typo_key = 1
+
+[env]
+"" = "x"
+
+[slr]
+runtime = "snipper"
+filesystems_rw = ["games"]
+extra = true

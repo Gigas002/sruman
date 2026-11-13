@@ -1,0 +1,18 @@
+# ~/.config/sruman/profiles/sniper.toml
+# `name` must match the file name. Paths may start with `~`.
+# Without this file, `sniper` still works as an implicit profile with the
+# defaults below (no prefix: the game sees your real home).
+
+name = "sniper"
+# runner_args = []                         # pressure-vessel options, e.g. ["--verbose"]
+# wrappers = ["gamemoderun", "mangohud"]   # in front of everything, outside the container
+# debug = false                            # verbose runtime logging in run logs
+# shader_cache = "~/.cache/sruman/shaders" # each game's Mesa/NVIDIA/AMD caches in <dir>/<game>
+
+# [env]
+# SDL_VIDEODRIVER = "wayland"
+
+[slr]
+runtime = "sniper"                         # or "sniper=3.0.20261021.266025" to pin a build
+# filesystems_rw = ["~/Games"]             # host paths the container may write
+# filesystems_ro = []                      # host paths it may read

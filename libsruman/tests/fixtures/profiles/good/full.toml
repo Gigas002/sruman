@@ -1,0 +1,14 @@
+name = "full"
+prefix = "~/prefixes/full"
+runner_args = ["--verbose"]
+wrappers = ["mangohud --dlsym", "gamemoderun"]
+debug = true
+shader_cache = "~/.cache/shaders"
+
+[env]
+DXVK_HUD = "fps"
+
+[slr]
+runtime = "sniper=3.0.20261021.266025"
+filesystems_rw = ["~/Games"]
+filesystems_ro = ["/mnt/music"]

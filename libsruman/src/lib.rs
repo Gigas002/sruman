@@ -6,6 +6,7 @@
 
 pub mod catalog;
 pub mod manifest;
+pub mod model;
 pub mod mtree;
 pub mod paths;
 pub mod store;

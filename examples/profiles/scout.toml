@@ -1,0 +1,11 @@
+# ~/.config/sruman/profiles/scout.toml
+# Older native games (built for Steam Runtime 1.0, e.g. Hollow Knight) run in
+# scout, which runs inside a soldier container: `sruman -S scout` installs both.
+
+name = "scout"
+prefix = "~/.local/share/sruman/prefixes/scout"   # saves and configs go to <prefix>/home
+
+[slr]
+runtime = "scout"
+# runtime = "scout-ldlp"                   # no container: faster, but the prefix only
+#                                          # redirects HOME and XDG_* (see docs)

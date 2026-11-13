@@ -604,11 +604,16 @@ Rules:
       against the real Steam soldier/scout installs (Content verify included).
       New deps: flate2, sha2, rustix (fs), toml; tempfile for tests. 27 new
       tests.
-- [ ] **1.6** `model`: `Profile` (lootrs field names), `SlrSection`,
+- [x] **1.6** `model`: `Profile` (lootrs field names), `SlrSection`,
       `validate_name` (lootrs rules), `validate` → `Vec<Issue>`, `load_dir`,
       implicit profiles from the catalog. Fixtures under
       `libsruman/tests/fixtures/profiles/`, plus a test that every file in
       `examples/profiles/` loads and validates.
+      _Done 2026-11-13:_ `model` with `Profile`, `SlrSection` (validates alone
+      for lootrs), `ShaderCache`, implicit profiles, `load_dir` (every bad
+      file reported, the rest load), unknown-key warnings and atomic
+      `save_profile`. Example profiles in `examples/profiles/` are loaded and
+      validated by `libsruman/tests/examples.rs`.
 - [ ] **1.6b** `model::Game` + `load_games` (lootrs' `games.toml` fields
       minus `game_id`; unique names, absolute `exe`/`cwd`, the profile
       exists), and `resolve_target` (the D10 rule: `/` or `~` → path,
