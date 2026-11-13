@@ -86,6 +86,9 @@ pub struct LaunchContext<'a> {
     pub extra_args: &'a [String],
     pub store: &'a Store,
     pub catalog: &'a Catalog,
+    /// The user's `$SHELL`, for [`Target::Shell`] without a container
+    /// (scout-ldlp); containers use pressure-vessel's own shell.
+    pub shell: Option<&'a Path>,
 }
 
 /// A resolved command, ready to spawn.
@@ -625,7 +628,12 @@ pub fn prepare(
             let cwd = prefix
                 .as_ref()
                 .map_or_else(|| home.to_path_buf(), |p| p.join(prefix::HOME_DIR));
-            (OsString::from("bash"), Vec::new(), cwd)
+            // Containers replace it with pressure-vessel's shell (below);
+            // without one it's the user's own shell on the host.
+            let shell = ctx
+                .shell
+                .map_or_else(|| OsString::from("bash"), |s| s.as_os_str().to_owned());
+            (shell, Vec::new(), cwd)
         }
     };
     args.extend(ctx.extra_args.iter().map(OsString::from));
@@ -668,6 +676,7 @@ pub fn prepare(
     if let Some(prefix) = &prefix {
         env.insert(TAG_PREFIX.to_owned(), prefix.clone().into_os_string());
     }
+    let shell = matches!(target, Target::Shell);
 
     let native = NativeCommand {
         program,
@@ -678,6 +687,14 @@ pub fn prepare(
     let wrapped = wrap(native, &profile.slr, profile, prefix.as_deref(), ctx);
     match wrapped {
         Ok(mut plan) if problems.is_empty() => {
+            if shell && plan.pass_fds {
+                // pressure-vessel opens an interactive shell on the
+                // terminal instead of running the command.
+                plan.env
+                    .insert("PRESSURE_VESSEL_SHELL".to_owned(), "instead".into());
+                plan.env
+                    .insert("PRESSURE_VESSEL_TERMINAL".to_owned(), "tty".into());
+            }
             plan.wrappers = wrappers;
             plan.shader_cache = shader_cache;
             Ok(plan)

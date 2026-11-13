@@ -57,6 +57,7 @@ impl World {
             extra_args: extra,
             store: &self.store,
             catalog: &self.catalog,
+            shell: Some(Path::new("/usr/bin/fish")),
         }
     }
 
@@ -685,8 +686,12 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
     assert!(!spec.env.contains_key("HOME"));
     assert_eq!(
         strings(spec.argv()),
-        [ldlp.dir.join("run.sh").display().to_string(), "bash".into()]
+        [
+            ldlp.dir.join("run.sh").display().to_string(),
+            "/usr/bin/fish".into()
+        ]
     );
+    assert!(!spec.env.contains_key("PRESSURE_VESSEL_SHELL"));
 }
 
 fn issue_text(issues: &[Issue]) -> Vec<String> {
@@ -753,4 +758,61 @@ fn preflight_names_each_fix() {
             "error: profile `f`: `prefix` {home}/afile is not a directory"
         )]
     );
+}
+
+#[test]
+fn shells_per_runtime_kind() {
+    let w = World::new();
+    let soldier = w.install("soldier", "2.0.1");
+    let scout = w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
+    let tag = Tag::Session("shell:p:1".into());
+    for (runtime, with_prefix) in [("sniper", true), ("sniper", false), ("scout", true)] {
+        let mut profile = Profile::new("p", runtime.parse().unwrap());
+        profile.wrappers = vec!["gamemoderun".into()];
+        if with_prefix {
+            profile.prefix = Some("~/prefixes/p".into());
+        }
+        let plan = prepare(
+            Target::Shell,
+            &profile,
+            &tag,
+            &w.ctx(std::slice::from_ref(&w.bin), &[]),
+        )
+        .unwrap();
+        let spec = plan.spec(&[]);
+        let argv = strings(spec.argv());
+        assert!(
+            !argv.iter().any(|a| a.ends_with("gamemoderun")),
+            "no wrappers for shells: {argv:?}"
+        );
+        assert_eq!(spec.env["PRESSURE_VESSEL_SHELL"], "instead", "{runtime}");
+        assert_eq!(spec.env["PRESSURE_VESSEL_TERMINAL"], "tty");
+        assert_eq!(spec.env["SRUMAN_SESSION"], "shell:p:1");
+        let expected_cwd = if with_prefix {
+            w.home.join("prefixes/p/home")
+        } else {
+            w.home.clone()
+        };
+        assert_eq!(spec.cwd, expected_cwd, "{runtime} {with_prefix}");
+        assert_eq!(plan.prefix.is_some(), with_prefix);
+        let first = if runtime == "scout" {
+            soldier.dir.join("run")
+        } else {
+            w.build_dir().join("run")
+        };
+        assert_eq!(argv[0], first.display().to_string());
+        if runtime == "scout" {
+            assert!(
+                argv.contains(
+                    &scout
+                        .dir
+                        .join("scout-on-soldier-entry-point-v2")
+                        .display()
+                        .to_string()
+                )
+            );
+        }
+    }
+    // The prefix home doesn't exist before `acquire`; that's not a problem.
+    assert!(!w.home.join("prefixes/p").exists());
 }

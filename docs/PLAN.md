@@ -823,10 +823,20 @@ Rules:
       Nothing is locked or created; `-Pk`, `-Gk` and `-D` use it in Phase 4. A
       missing profile is the CLI's (`sruman -Pn …`), since preflight takes a
       profile.
-- [ ] **3.4** `Target::Shell` for `-X --shell` (`PRESSURE_VESSEL_SHELL=instead`,
+- [x] **3.4** `Target::Shell` for `-X --shell` (`PRESSURE_VESSEL_SHELL=instead`,
       `PRESSURE_VESSEL_TERMINAL=tty`; scout-ldlp: `run.sh $SHELL`). Golden argv/env tests per
       runtime kind and per target (game, path, shell), with and without a
       prefix.
+      _Done 2026-11-13:_ `Target::Shell`: containers (sniper, soldier,
+      steamrt4, scout through soldier) get `PRESSURE_VESSEL_SHELL=instead` +
+      `PRESSURE_VESSEL_TERMINAL=tty`, so pressure-vessel opens its shell on
+      the terminal in place of the command (checked by hand on the real sniper
+      build through a pty: the shell reported "Steam Runtime 3 (sniper)");
+      scout-ldlp runs `run.sh <$SHELL>` (`LaunchContext::shell`, `bash` if
+      unset). Shells get no wrappers, start in the prefix home (or the real
+      one without a prefix), and are tagged `SRUMAN_SESSION`. Golden tests now
+      cover each runtime kind (container, scout, scout-ldlp) × target (game,
+      path, bare name, shell), with and without a prefix.
 - [ ] **3.5** `process`: list sessions by tag from `/proc`, and stop a
       process group (TERM, then a timeout, then KILL). lootrs' approach, not
       its code.
