@@ -4,6 +4,7 @@
 //! The library never parses CLI arguments, initializes logging or reads
 //! configuration files on its own; callers pass resolved values in.
 
+pub mod catalog;
 pub mod paths;
 pub mod version;
 

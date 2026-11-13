@@ -544,10 +544,19 @@ Rules:
       (stable/beta/steam, with the pointer-file fallback list per channel).
       All three serialize as their strings. serde becomes a dependency; toml
       is a dev-dependency for now. 8 tests.
-- [ ] **1.3** `catalog`: built-in `RuntimeDef`s from the table above
+- [x] **1.3** `catalog`: built-in `RuntimeDef`s from the table above
       (`server_dir`, `archives[arch]`, `entry`, `depends`, `channels`),
       `with_overrides`, and dependency resolution (topological, with cycle
       and missing-dependency errors).
+      _Done 2026-11-13:_ Catalog::builtin() has scout (scout-on-soldier,
+      depends on soldier), scout-ldlp, soldier, sniper and steamrt4 (x86_64
+      and arm64), with archive names, server dirs and Debian bases checked
+      against Valve's server. RuntimeOverride is the [[runtime]] config entry:
+      it merges into a built-in or adds a new runtime, and with_overrides
+      reports every invalid entry (https only, plain directory and file names,
+      known channel keys). install_order resolves dependencies first, once
+      each, with unknown-runtime (naming who required it) and cycle errors;
+      dependents() serves -R. 10 tests.
 - [ ] **1.4** `manifest`: parse `manifest.dpkg`, diff two manifests
       (added/removed/changed packages with versions), and search by package
       name. Golden tests against a real manifest fixture.
