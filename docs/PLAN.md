@@ -535,8 +535,15 @@ Rules:
       profiles, games_file, runtimes, prefixes, sync_cache, pkg_cache, logs,
       locks with the state-dir fallback) and expand_tilde, in
       liblootrs::paths' shape; 7 tests. thiserror is the first dependency.
-- [ ] **1.2** `version`: `BuildId` (parse, numeric `Ord`, `Display`),
+- [x] **1.2** `version`: `BuildId` (parse, numeric `Ord`, `Display`),
       `RuntimeRef` (`name` | `name=build`), `Channel` + pointer-file fallbacks.
+      _Done 2026-11-13:_ BuildId (parsed from Valve's dot-separated ids,
+      including the old 0.2022… style; ordered numerically part by part, with
+      ties broken by spelling so Ord agrees with Eq), RuntimeRef (name or
+      name=build, runtime names follow the profile-name rules), and Channel
+      (stable/beta/steam, with the pointer-file fallback list per channel).
+      All three serialize as their strings. serde becomes a dependency; toml
+      is a dev-dependency for now. 8 tests.
 - [ ] **1.3** `catalog`: built-in `RuntimeDef`s from the table above
       (`server_dir`, `archives[arch]`, `entry`, `depends`, `channels`),
       `with_overrides`, and dependency resolution (topological, with cycle

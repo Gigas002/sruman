@@ -12,4 +12,8 @@ repository.workspace = true
 default = []
 
 [dependencies]
+serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+toml.workspace = true

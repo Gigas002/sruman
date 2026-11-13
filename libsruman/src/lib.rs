@@ -5,6 +5,7 @@
 //! configuration files on its own; callers pass resolved values in.
 
 pub mod paths;
+pub mod version;
 
 /// Crate version, for state files and the User-Agent.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
