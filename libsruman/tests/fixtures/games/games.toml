@@ -1,0 +1,25 @@
+[[game]]
+name = "good"
+exe = "~/g/good.x86_64"
+profile = "sniper"
+args = ["-a"]
+cwd = "/tmp"
+env = { A = "1" }
+
+[[game]]
+name = "good"
+exe = "/dup"
+
+[[game]]
+name = "no-exe"
+
+[[game]]
+name = "bad paths"
+exe = "relative/exe"
+cwd = "rel"
+profile = "missing"
+colour = "blue"
+
+[[game]]
+name = "default"
+exe = "/opt/default/run"

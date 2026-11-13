@@ -29,3 +29,19 @@ fn example_profiles_load_and_validate_without_errors() {
         assert!(issues.is_empty(), "{}: {issues:#?}", profile.name);
     }
 }
+
+#[test]
+fn example_games_load_and_validate() {
+    let catalog = Catalog::builtin();
+    let ctx = ValidationContext {
+        home: Path::new("/home/u"),
+        catalog: &catalog,
+    };
+    let profiles = model::load_dir(&examples().join("profiles"));
+    let games = model::load_games(&examples().join("games.toml"));
+    assert!(games.issues.is_empty(), "{:#?}", games.issues);
+    assert_eq!(games.games.len(), 3);
+    // The exes don't exist here, which is only a warning.
+    let issues = games.validate(&profiles, Some("sniper"), &ctx);
+    assert!(issues.iter().all(|i| !i.is_error()), "{issues:#?}");
+}

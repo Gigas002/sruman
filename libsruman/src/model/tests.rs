@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use std::collections::BTreeMap;
+
 use super::*;
 use crate::version::RuntimeRef;
 
@@ -211,5 +213,188 @@ fn shader_cache_forms() {
             "__GL_SHADER_DISK_CACHE_PATH",
             "AMD_VK_PIPELINE_CACHE_PATH"
         ]
+    );
+}
+
+fn games_fixture() -> LoadedGames {
+    load_games(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/games/games.toml"))
+}
+
+fn game(name: &str) -> Game {
+    Game {
+        name: name.into(),
+        exe: format!("/g/{name}").into(),
+        profile: None,
+        args: Vec::new(),
+        cwd: None,
+        env: BTreeMap::new(),
+    }
+}
+
+#[test]
+fn games_load_with_duplicates_and_broken_entries_reported() {
+    let loaded = games_fixture();
+    let names: Vec<&str> = loaded.games.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(names, ["good", "bad paths", "default"]);
+    let good = loaded.get("good").unwrap();
+    assert_eq!(good.exe, Path::new("~/g/good.x86_64"));
+    assert_eq!(good.args, ["-a"]);
+    assert_eq!(good.env["A"], "1");
+
+    let text = messages(&loaded.issues);
+    assert!(
+        text.contains(
+            &"error: game `good`: duplicate name; only the first entry is used".to_owned()
+        ),
+        "{text:#?}"
+    );
+    assert!(
+        text.iter()
+            .any(|m| m.contains("invalid `[[game]]` no-exe") && m.contains("exe")),
+        "{text:#?}"
+    );
+    assert!(
+        text.contains(&"warning: game `bad paths`: unknown key `colour` is ignored".to_owned())
+    );
+    assert_eq!(text.len(), 3, "{text:#?}");
+}
+
+#[test]
+fn games_validate_against_profiles_and_default() {
+    let catalog = Catalog::builtin();
+    let loaded = games_fixture();
+    let profiles = LoadedProfiles::default();
+
+    let text = messages(&loaded.validate(&profiles, Some("soldier"), &ctx(&catalog)));
+    assert!(
+        text.contains(&"warning: game `good`: `exe` not found: /home/u/g/good.x86_64".to_owned())
+    );
+    for expected in [
+        "error: game `bad paths`: name `bad paths` contains ` `",
+        "error: game `bad paths`: profile `missing` does not exist",
+        "error: game `bad paths`: `exe` must be an absolute path (or start with `~`), got `relative/exe`",
+        "error: game `bad paths`: `cwd` must be an absolute path (or start with `~`), got `rel`",
+    ] {
+        assert!(
+            text.iter().any(|m| m.starts_with(expected)),
+            "{expected}\n{text:#?}"
+        );
+    }
+    assert!(
+        !text.iter().any(|m| m.contains("game `default`: profile")),
+        "{text:#?}"
+    );
+
+    let without_default = messages(&loaded.validate(&profiles, None, &ctx(&catalog)));
+    assert!(without_default.contains(
+        &"error: game `default`: no `profile` set and no usable `default_profile` in config.toml".to_owned()
+    ));
+    let bad_default = messages(&loaded.validate(&profiles, Some("nope"), &ctx(&catalog)));
+    assert!(
+        bad_default
+            .iter()
+            .any(|m| m.starts_with("error: game `default`: no `profile` set"))
+    );
+}
+
+#[test]
+fn game_profile_overrides_default() {
+    let mut g = game("x");
+    assert_eq!(g.profile_name(Some("sniper")), Some("sniper"));
+    assert_eq!(g.profile_name(None), None);
+    g.profile = Some("scout".into());
+    assert_eq!(g.profile_name(Some("sniper")), Some("scout"));
+}
+
+#[test]
+fn games_file_missing_or_broken() {
+    assert!(
+        load_games(Path::new("/nonexistent/games.toml"))
+            .games
+            .is_empty()
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("games.toml");
+    std::fs::write(&path, "[[game]\n").unwrap();
+    let loaded = load_games(&path);
+    assert!(loaded.games.is_empty());
+    assert!(messages(&loaded.issues)[0].contains("invalid games file"));
+
+    std::fs::write(&path, "game = 1\nother = 2\n").unwrap();
+    let text = messages(&load_games(&path).issues);
+    assert!(
+        text.iter().any(|m| m.contains("unknown key `other`")),
+        "{text:#?}"
+    );
+    assert!(
+        text.iter().any(|m| m.contains("invalid games file")),
+        "{text:#?}"
+    );
+}
+
+#[test]
+fn targets_resolve_like_a_shell() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cwd = tmp.path();
+    std::fs::write(cwd.join("local"), "").unwrap();
+    std::fs::write(cwd.join("supertux"), "").unwrap();
+    let home = Path::new(HOME);
+    let games = [game("supertux"), game("hollow-knight")];
+
+    // A game name wins, even over a file of the same name.
+    assert_eq!(
+        resolve_target("supertux", &games, cwd, home),
+        Ok(RunTarget::Game(&games[0]))
+    );
+    // `/` or `~` makes it a path.
+    assert_eq!(
+        resolve_target("./local", &games, cwd, home),
+        Ok(RunTarget::Path(cwd.join("./local")))
+    );
+    assert_eq!(
+        resolve_target("bin/x", &games, cwd, home),
+        Ok(RunTarget::Path(cwd.join("bin/x")))
+    );
+    assert_eq!(
+        resolve_target("/opt/x", &games, cwd, home),
+        Ok(RunTarget::Path("/opt/x".into()))
+    );
+    assert_eq!(
+        resolve_target("~/x", &games, cwd, home),
+        Ok(RunTarget::Path("/home/u/x".into()))
+    );
+    assert_eq!(
+        resolve_target("~", &games, cwd, home),
+        Ok(RunTarget::Path(home.into()))
+    );
+    // A path that names a game is still a path.
+    assert_eq!(
+        resolve_target("./supertux", &games, cwd, home),
+        Ok(RunTarget::Path(cwd.join("./supertux")))
+    );
+
+    // An unknown name never runs the local file; it only hints.
+    let err = resolve_target("local", &games, cwd, home).unwrap_err();
+    assert_eq!(err.to_string(), "no game 'local' (did you mean ./local?)");
+    assert_eq!(
+        err,
+        TargetError::UnknownGame {
+            name: "local".into(),
+            local: Some(cwd.join("local"))
+        }
+    );
+    let err = resolve_target("nothing", &games, cwd, home).unwrap_err();
+    assert_eq!(err.to_string(), "no game 'nothing'");
+    // A directory is not a hint.
+    std::fs::create_dir(cwd.join("dir")).unwrap();
+    assert_eq!(
+        resolve_target("dir", &games, cwd, home)
+            .unwrap_err()
+            .to_string(),
+        "no game 'dir'"
+    );
+    assert_eq!(
+        resolve_target("", &games, cwd, home),
+        Err(TargetError::Empty)
     );
 }

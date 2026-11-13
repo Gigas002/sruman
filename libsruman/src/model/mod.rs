@@ -12,8 +12,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod game;
 mod profile;
 
+pub use game::{Game, LoadedGames, RunTarget, TargetError, load_games, resolve_target};
 pub use profile::{
     LoadedProfiles, Profile, ShaderCache, SlrSection, implicit_profile, load_dir, save_profile,
 };
@@ -142,14 +144,18 @@ impl Issues {
         }
     }
 
-    /// Errors unless `path` is absolute after `~` expansion.
-    pub(crate) fn absolute(&mut self, field: &str, path: &Path, home: &Path) {
-        if !paths::expand_tilde(path, home).is_absolute() {
-            self.error(format!(
-                "`{field}` must be an absolute path (or start with `~`), got `{}`",
-                path.display()
-            ));
+    /// Errors unless `path` is absolute after `~` expansion; returns the
+    /// expanded path when it is.
+    pub(crate) fn absolute(&mut self, field: &str, path: &Path, home: &Path) -> Option<PathBuf> {
+        let expanded = paths::expand_tilde(path, home);
+        if expanded.is_absolute() {
+            return Some(expanded);
         }
+        self.error(format!(
+            "`{field}` must be an absolute path (or start with `~`), got `{}`",
+            path.display()
+        ));
+        None
     }
 
     pub(crate) fn env(&mut self, env: &BTreeMap<String, String>) {

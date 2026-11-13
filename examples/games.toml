@@ -1,0 +1,21 @@
+# ~/.config/sruman/games.toml: the same format as lootrs' games.toml
+# (without `game_id`). Run a game with `sruman <name>`; check this file
+# with `sruman -Gk`. Paths may start with `~`.
+
+[[game]]
+name = "hollow-knight"                     # letters, digits, `.`, `_`, `-`
+exe = "~/Games/HollowKnight/hollow_knight.x86_64"
+profile = "scout"                          # a file in profiles/, or an implicit one
+# args = ["-force-vulkan"]                 # before the arguments you pass
+# cwd = "~/Games/HollowKnight"             # default: the exe's directory
+
+[[game]]
+name = "supertux"
+exe = "~/Games/SuperTux/run.sh"
+profile = "sniper"                         # implicit profiles work here too
+env = { SDL_VIDEODRIVER = "wayland" }      # merged over the profile's env
+
+[[game]]
+name = "buckshot-roulette"
+exe = "~/Games/BuckshotRoulette/Buckshot Roulette.x86_64"
+# no profile: uses `default_profile` from config.toml

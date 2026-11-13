@@ -341,7 +341,7 @@ pub fn save_profile(dir: &Path, profile: &Profile) -> Result<PathBuf, ModelError
     Ok(path)
 }
 
-fn file_issue(path: &Path, message: String) -> Issue {
+pub(super) fn file_issue(path: &Path, message: String) -> Issue {
     Issue {
         severity: super::Severity::Error,
         subject: Subject::File(path.to_path_buf()),
