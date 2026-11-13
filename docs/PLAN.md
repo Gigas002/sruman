@@ -471,9 +471,10 @@ tx.commit(&fetch, &mut impl Progress, &CancelFlag) -> Vec<Outcome>;
 Transaction::upgrade(&index, &store, &catalog, Upgrade::All, &opts)?;    // -Su
 
 // Profiles and prefixes (lootrs pattern)
-let profiles = model::load_dir(&dirs.profiles) -> (Vec<Profile>, Vec<Issue>);
-let games = model::load_games(&dirs.games_file) -> (Vec<Game>, Vec<Issue>);
-model::resolve_target("hollow-knight", &games, cwd) -> Result<RunTarget::{Game(&Game), Path(PathBuf)}, TargetError>; // D10 rule
+let profiles = model::load_dir(&dirs.profiles) -> LoadedProfiles { profiles, issues };
+let games = model::load_games(&dirs.games_file) -> LoadedGames { games, issues };
+games.validate(&profiles, default_profile, &ctx) -> Vec<Issue>;              // -Gk
+model::resolve_target("hollow-knight", &games.games, cwd, home) -> Result<RunTarget::{Game(&Game), Path(PathBuf)}, TargetError>; // D10 rule
 profile.validate(&ValidationContext { home, catalog: &catalog }) -> Vec<Issue>;
 prefix::ensure(&prefix_path, &profile.slr, &PrefixContext { lock_dir }) -> Result<PrefixGuard, PrefixError>;
 
@@ -614,12 +615,19 @@ Rules:
       file reported, the rest load), unknown-key warnings and atomic
       `save_profile`. Example profiles in `examples/profiles/` are loaded and
       validated by `libsruman/tests/examples.rs`.
-- [ ] **1.6b** `model::Game` + `load_games` (lootrs' `games.toml` fields
+- [x] **1.6b** `model::Game` + `load_games` (lootrs' `games.toml` fields
       minus `game_id`; unique names, absolute `exe`/`cwd`, the profile
       exists), and `resolve_target` (the D10 rule: `/` or `~` → path,
       otherwise a game name; an unknown name that matches a file in the cwd
       errors with the `./name` hint). Tests cover every branch of the rule,
       and `examples/games.toml` loads and validates.
+      _Done 2026-11-13:_ `model::Game`, `load_games` (duplicates, broken
+      entries and unknown keys reported; the rest load),
+      `LoadedGames::validate` (game profile, else `default_profile`; missing
+      exe/cwd only warn, as in lootrs) and `resolve_target(target, games, cwd,
+      home)`: `/` or `~` makes a path (made absolute), a game name wins over a
+      same-named file, an unknown name gets a `./name` hint only for files.
+      `examples/games.toml` is loaded and validated in `tests/examples.rs`.
 - [ ] **1.7** `prefix`: `ensure` (skeleton, state file, reconcile), `reset`,
       shared/exclusive locks keyed by path hash, `Busy` error, and "which
       profiles share this prefix".

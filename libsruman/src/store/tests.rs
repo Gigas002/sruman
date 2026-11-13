@@ -1,6 +1,16 @@
-use std::{io::Write, process::Command};
+use std::{
+    io::Write,
+    process::Command,
+    sync::{PoisonError, RwLock},
+};
 
 use super::*;
+
+/// A spawned child shares every open fd between its fork and exec, which
+/// keeps the parent's flocks held after the parent drops them. Tests that
+/// check a lock is released take this for reading; tests that spawn take
+/// it for writing.
+static SPAWN: RwLock<()> = RwLock::new(());
 
 /// A minimal container build like Valve's `SteamLinuxRuntime_<name>`: `run`,
 /// `VERSIONS.txt`, `<name>_platform_<build>/files/` and `mtree.txt.gz`.
@@ -146,6 +156,7 @@ fn missing_metadata_is_tolerated() {
 
 #[test]
 fn store_lock_is_exclusive_and_wipes_staging() {
+    let _spawn = SPAWN.read().unwrap_or_else(PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let store = Store::open(tmp.path());
     let lock = store.lock().unwrap();
@@ -209,6 +220,7 @@ fn remove_of_a_linked_build_only_unregisters_it() {
 
 #[test]
 fn hold_blocks_remove_unless_forced() {
+    let _spawn = SPAWN.read().unwrap_or_else(PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let store = Store::open(tmp.path());
     let lock = store.lock().unwrap();
@@ -232,6 +244,7 @@ fn hold_blocks_remove_unless_forced() {
 
 #[test]
 fn clean_keeps_current_newest_pinned_linked_and_in_use() {
+    let _spawn = SPAWN.read().unwrap_or_else(PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let store = Store::open(tmp.path().join("store"));
     let lock = store.lock().unwrap();
@@ -289,6 +302,7 @@ fn clean_keeps_current_newest_pinned_linked_and_in_use() {
 /// constants std doesn't expose); skipped without python3.
 #[test]
 fn pressure_vessel_lock_marks_a_build_in_use() {
+    let _spawn = SPAWN.write().unwrap_or_else(PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let store = Store::open(tmp.path());
     let lock = store.lock().unwrap();
