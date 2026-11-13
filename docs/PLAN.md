@@ -679,8 +679,14 @@ Rules:
       `list_builds`/`parse_autoindex` are tested on the saved real `images/`
       page. Catalog `base_url` now also accepts `http://` for localhost only
       (local mirror, step 2.6 tests).
-- [ ] **2.3** `Progress` trait (`begin(item, total)`, `advance(n)`,
+- [x] **2.3** `Progress` trait (`begin(item, total)`, `advance(n)`,
       `phase(Download|Verify|Extract|Commit)`) and `CancelFlag`.
+      _Done 2026-11-13:_ `progress`: `Progress` (`begin(item)`, `phase(Phase,
+      total)`, `advance(n)`, `end(ok)`), `NoProgress`, `CancelFlag` (shared
+      `Arc<AtomicBool>`, `check() -> Result<(), Cancelled>`), and
+      `ProgressReader`, which reports reads and fails with an error wrapping
+      `Cancelled` (`is_cancelled`) so a stream copy stops promptly. Not
+      feature-gated: `-Qkk` verification can report through it too.
 - [ ] **2.4** `install::Transaction`: resolve targets + `depends` (pacman
       order), skip installed with `needed`, then a summary with sizes and
       manifest diffs. `commit` streams each archive into `pkg/` with `Range`
