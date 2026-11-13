@@ -17,6 +17,10 @@ static SPAWN: RwLock<()> = RwLock::new(());
 pub(crate) fn fake_container(dir: &Path, name: &str, build: &str) {
     fs::create_dir_all(dir.join(format!("{name}_platform_{build}/files"))).unwrap();
     fs::write(dir.join("run"), "#!/bin/sh\nexec \"$@\"\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir.join("run"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
     fs::write(
         dir.join("VERSIONS.txt"),
         format!("#Name\tVersion\nruntime\t1\ndepot\t{build}\t\t\t# Overall version number\n"),

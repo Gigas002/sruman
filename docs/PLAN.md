@@ -756,7 +756,7 @@ Rules:
 
 ### Phase 3 — launch
 
-- [ ] **3.1** `launch::prepare`/`wrap` for container runtimes:
+- [x] **3.1** `launch::prepare`/`wrap` for container runtimes:
       `<build>/run [runner_args] -- <exe> <args>` (not `_v2-entry-point`), with
       `PRESSURE_VESSEL_VARIABLE_DIR=<build>/var`,
       `PRESSURE_VESSEL_FILESYSTEMS_RW/RO` (`:`-joined, `~` expanded: the
@@ -767,6 +767,29 @@ Rules:
       then the extra args, `cwd` defaulting to the exe's directory, env
       layered runtime < profile < game, and the shader cache in `<dir>/<game>`. Wrappers go in
       front of everything, as in lootrs.
+      _Done 2026-11-13:_ `launch` in two steps. `prepare(Target::{Game, Exe,
+      Shell}, &profile, &Tag, &LaunchContext)` resolves everything with
+      filesystem reads only and collects every problem (missing exe or cwd,
+      not executable, wrapper not in PATH, runtime not installed with the
+      `sruman -S …` fix, an incomplete build with the `-Qkk` fix, a `:` in a
+      shared path). `LaunchPlan::acquire` then takes the `BuildHold`s and runs
+      `prefix::ensure` (and creates the shader cache dir), returning `Launch {
+      spec, fds }`; `Launch::make_inheritable` clears `CLOEXEC`. Command:
+      `[wrappers] <build>/run [runner_args] --pass-fd=<fd>… -- <exe> [game
+      args] [extra args]`, with `PRESSURE_VESSEL_VARIABLE_DIR`,
+      `PRESSURE_VESSEL_HOME`, `PRESSURE_VESSEL_FILESYSTEMS_RW` (exe dir, cwd,
+      profile paths, shader cache) / `_RO`, `PRESSURE_VESSEL_VERBOSE`, env
+      shader cache < profile < game < tags (`SRUMAN_GAME` or `SRUMAN_SESSION`,
+      `SRUMAN_PROFILE`, `SRUMAN_PREFIX`). `wrap(NativeCommand, …)` is the
+      lootrs/gaki entry.  **Measured:** pressure-vessel closes inherited fds,
+      so a lock merely inherited is gone while the game runs; with `--pass-fd`
+      the game holds it. So every container launch passes its locks (not only
+      scout, as planned). The ignored `real_container_launch` test (real
+      sniper build, `SRUMAN_REAL_BUILD`) confirms: `$HOME` writes land in
+      `<prefix>/home`, and the build and prefix stay locked by the child alone
+      after the launcher drops its copies, until it exits. Bare `Exe` names
+      and shells start in the prefix home, so the real home isn't shared as
+      the cwd.
 - [ ] **3.2** `scout`: `<soldier>/run -- <scout>/scout-on-soldier-entry-point-v2 -- <exe>`,
       with the scout build dir shared RW. `scout-ldlp`: `<build>/run.sh <exe>`,
       prefix home through env only. Both hold `.sruman.lock` (`--pass-fd` for

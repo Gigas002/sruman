@@ -17,7 +17,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
     io,
-    os::fd::{AsFd, BorrowedFd},
+    os::fd::{AsFd, BorrowedFd, OwnedFd},
     path::{Path, PathBuf},
 };
 
@@ -104,6 +104,10 @@ impl PrefixLock {
     /// detached launcher.
     pub fn fd(&self) -> BorrowedFd<'_> {
         self.file.as_fd()
+    }
+
+    pub fn into_fd(self) -> OwnedFd {
+        self.file.into()
     }
 }
 
