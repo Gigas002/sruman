@@ -5,6 +5,8 @@
 //! configuration files on its own; callers pass resolved values in.
 
 pub mod catalog;
+#[cfg(feature = "download")]
+pub mod fetch;
 pub mod manifest;
 pub mod model;
 pub mod mtree;

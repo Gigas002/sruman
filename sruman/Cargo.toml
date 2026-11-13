@@ -16,4 +16,6 @@ path = "src/main.rs"
 libsruman.workspace = true
 
 [features]
-default = []
+default = ["download"]
+# `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`.
+download = ["libsruman/download", "libsruman/ureq"]

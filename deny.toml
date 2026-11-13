@@ -2,7 +2,19 @@
 all-features = true
 
 [licenses]
-allow = ["Apache-2.0", "GPL-3.0-or-later", "MIT", "Unicode-3.0", "Zlib"]
+allow = [
+    "Apache-2.0",
+    # subtle (rustls)
+    "BSD-3-Clause",
+    # webpki-roots: the bundled Mozilla root certificates
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-or-later",
+    # ring, rustls-webpki
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
 confidence-threshold = 0.8
 private = { ignore = true }
 

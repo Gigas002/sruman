@@ -436,7 +436,8 @@ auto_install = false          # missing runtime at launch: false → [Y/n] promp
 
 | Crate       | Feature    | Default | Pulls in                                   | Gives                                    |
 | ----------- | ---------- | ------- | ------------------------------------------ | ---------------------------------------- |
-| `libsruman` | `download` | yes     | `ureq` (rustls), xz decoder, `tar`, `sha2` | sync index, install, upgrade             |
+| `libsruman` | `download` | yes     | xz decoder, `tar`                          | `Fetch` trait, sync index, install, upgrade |
+| `libsruman` | `ureq`     | yes     | `ureq` (rustls on ring, webpki roots); implies `download` | `UreqFetch`, the default `Fetch` (gaki enables only `download` and brings its own client) |
 | `libsruman` | `diag`     | no      | —                                          | doctor checks                            |
 | `sruman`    | `download` | yes     | `libsruman/download`                       | `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`  |
 | `sruman`    | `json`     | yes     | `serde_json`                               | `--json`                                 |
@@ -644,9 +645,19 @@ Rules:
 
 ### Phase 2 — sync and transactions (`download`)
 
-- [ ] **2.1** `fetch`: the `Fetch` trait (`get`, `get_range`, `head`), and
+- [x] **2.1** `fetch`: the `Fetch` trait (`get`, `get_range`, `head`), and
       `UreqFetch` (rustls, generic User-Agent `sruman/<ver>`, no user data).
       Fixture-based tests, no network.
+      _Done 2026-11-13:_ `Fetch` (`head`, `get_from(url, offset)` with
+      `Range`, provided `get`/`get_text` with a size cap) and `UreqFetch`
+      (ureq 3 on rustls/ring with webpki roots, no gzip, User-Agent
+      `sruman/<ver>`, stall timeouts instead of an overall one). Servers that
+      ignore `Range` restart from 0 (`Body::start`); a 416 on a complete
+      cached file is an empty body; a cut connection is an error. The
+      `download` feature was split: `download` (trait, sync, install) and
+      `ureq` (`UreqFetch`), so gaki can bring its own client. Tests use
+      `tests/support/http.rs`, a `std::net` server that 2.6 reuses. deny.toml
+      allows ISC, BSD-3-Clause and CDLA-Permissive-2.0 (all in gaki's list).
 - [ ] **2.2** `sync`: `refresh` reads `images/update-timestamp.txt` and skips
       the rest when it's unchanged (unless forced). Otherwise, per catalog
       runtime and channel, it reads the pointer `.txt`, then the build's
