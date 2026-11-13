@@ -557,9 +557,18 @@ Rules:
       known channel keys). install_order resolves dependencies first, once
       each, with unknown-runtime (naming who required it) and cycle errors;
       dependents() serves -R. 10 tests.
-- [ ] **1.4** `manifest`: parse `manifest.dpkg`, diff two manifests
+- [x] **1.4** `manifest`: parse `manifest.dpkg`, diff two manifests
       (added/removed/changed packages with versions), and search by package
       name. Golden tests against a real manifest fixture.
+      _Done 2026-11-13:_ Manifest::parse reads Valve's tab-separated
+      manifest.dpkg (name[:arch], version, source, installed size; errors
+      carry the line number), with get, search (case-insensitive substring; a
+      regex for -Ss can come in the CLI), installed_size_kib, and diff into
+      added, removed and changed. Diff::summary merges architectures that
+      changed the same way. Golden test against the real sniper stable
+      (3.0.20261021.266025) and beta (3.0.20261110.268881) manifests,
+      committed as fixtures (30 KB each): SDL3 and steam-runtime-tools
+      changed. 5 tests.
 - [ ] **1.5** `store`: layout, `installed`, `resolve`, atomic `set_current`
       (temp symlink + rename), `remove`, `clean(keep, pinned, in_use)`,
       `verify` (against the build's `mtree.txt.gz`), `import` (copy or

@@ -5,6 +5,7 @@
 //! configuration files on its own; callers pass resolved values in.
 
 pub mod catalog;
+pub mod manifest;
 pub mod paths;
 pub mod version;
 
