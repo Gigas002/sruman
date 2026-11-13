@@ -34,7 +34,7 @@ use crate::{
 pub mod import;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 const LOCK_FILE: &str = ".lock";
 const STAGING_DIR: &str = ".staging";

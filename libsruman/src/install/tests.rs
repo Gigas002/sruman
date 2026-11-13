@@ -835,3 +835,182 @@ fn walk_count_links(dir: &Path) -> usize {
         })
         .sum()
 }
+
+// ---- upgrades ---------------------------------------------------------
+
+impl Fake {
+    /// Points sniper's stable channel at `build` and refreshes.
+    fn move_stable(&self, build: &str, stamp: &str) {
+        self.fetch.put(
+            &format!("{BASE}/steamrt3/images/latest-public-stable.txt"),
+            build,
+        );
+        self.fetch.put(
+            &format!("{BASE}/steamrt3/images/update-timestamp.txt"),
+            stamp,
+        );
+        let only = RefreshOptions {
+            force: false,
+            only: vec!["sniper".into()],
+        };
+        sync::refresh(&self.fetch, &catalog(), &self.sync, &only);
+    }
+
+    fn up(&self, which: &Upgrade, downgrade: bool) -> Result<Transaction, InstallError> {
+        Transaction::upgrade(
+            &self.fetch,
+            &self.sync,
+            &self.store,
+            &catalog(),
+            which,
+            &opts(),
+            &UpgradeOptions {
+                allow_downgrade: downgrade,
+            },
+        )
+    }
+}
+
+fn skipped(tx: &Transaction) -> Vec<(String, SkipReason)> {
+    tx.skipped
+        .iter()
+        .map(|s| (s.name.clone(), s.reason.clone()))
+        .collect()
+}
+
+#[test]
+fn upgrade_installs_the_newer_channel_build() {
+    let fake = Fake::new();
+    assert!(
+        fake.commit(&fake.tx(&["scout", "sniper"], &opts()).unwrap())
+            .ok()
+    );
+    let tx = fake.up(&Upgrade::All, false).unwrap();
+    assert!(tx.is_empty());
+    assert_eq!(
+        skipped(&tx),
+        // Install order: soldier before scout.
+        [
+            ("soldier".into(), SkipReason::UpToDate),
+            ("scout".into(), SkipReason::UpToDate),
+            ("sniper".into(), SkipReason::UpToDate),
+        ]
+    );
+
+    fake.move_stable(SNIPER_NEW, "t2");
+    let tx = fake.up(&Upgrade::All, false).unwrap();
+    assert_eq!(labels(&tx), [format!("sniper {SNIPER_NEW}Explicit")]);
+    assert_eq!(tx.items[0].make_current, MakeCurrent::IfNewer);
+    assert!(fake.commit(&tx).ok());
+    assert_eq!(fake.store.current("sniper"), Some(id(SNIPER_NEW)));
+    // The old build stays installed (`clean` decides about it).
+    assert_eq!(fake.store.installed_of("sniper").unwrap().len(), 2);
+}
+
+#[test]
+fn going_back_needs_uu() {
+    let fake = Fake::new();
+    fake.move_stable(SNIPER_NEW, "t2");
+    assert!(fake.commit(&fake.tx(&["sniper"], &opts()).unwrap()).ok());
+    fake.move_stable(SNIPER_OLD, "t3");
+
+    let tx = fake.up(&Upgrade::All, false).unwrap();
+    assert_eq!(skipped(&tx), [("sniper".into(), SkipReason::UpToDate)]);
+
+    let tx = fake.up(&Upgrade::All, true).unwrap();
+    assert_eq!(labels(&tx), [format!("sniper {SNIPER_OLD}Explicit")]);
+    assert_eq!(tx.items[0].make_current, MakeCurrent::Always);
+    assert!(fake.commit(&tx).ok());
+    assert_eq!(fake.store.current("sniper"), Some(id(SNIPER_OLD)));
+
+    // Forward again: NEW is installed, so only `current` moves.
+    fake.move_stable(SNIPER_NEW, "t4");
+    let tx = fake
+        .up(&Upgrade::Named(vec!["sniper".into()]), false)
+        .unwrap();
+    assert!(tx.items.is_empty());
+    assert_eq!(
+        tx.switches,
+        [Switch {
+            name: "sniper".into(),
+            from: Some(id(SNIPER_OLD)),
+            to: id(SNIPER_NEW),
+        }]
+    );
+    fake.fetch.take_log();
+    let report = fake.commit(&tx);
+    assert!(report.ok());
+    assert_eq!(report.switched.len(), 1);
+    assert!(fake.fetch.take_log().is_empty(), "nothing downloaded");
+    assert_eq!(fake.store.current("sniper"), Some(id(SNIPER_NEW)));
+
+    // And back to the installed OLD with -uu: a switch too.
+    fake.move_stable(SNIPER_OLD, "t5");
+    let tx = fake.up(&Upgrade::All, true).unwrap();
+    assert_eq!(tx.switches.len(), 1);
+    assert!(tx.items.is_empty());
+}
+
+#[test]
+fn upgrade_named_errors_and_all_skips() {
+    let fake = Fake::new();
+    assert!(matches!(
+        fake.up(&Upgrade::Named(vec!["nope".into()]), false),
+        Err(InstallError::Catalog(_))
+    ));
+    assert!(matches!(
+        fake.up(&Upgrade::Named(vec!["steamrt4".into()]), false),
+        Err(InstallError::NotSynced(_))
+    ));
+    // Named but not installed: installs the channel build.
+    let tx = fake
+        .up(&Upgrade::Named(vec!["sniper".into()]), false)
+        .unwrap();
+    assert_eq!(labels(&tx), [format!("sniper {SNIPER_OLD}Explicit")]);
+
+    // All: an installed runtime without an index, and one the catalog
+    // doesn't know, are skipped.
+    let lock = fake.store.lock().unwrap();
+    for (name, build) in [("steamrt4", "4.0.1"), ("custom", "1.0.1")] {
+        let staged = fake.store.staging_dir(&lock, name).unwrap();
+        crate::store::tests::fake_container(&staged, name, build);
+        let meta = BuildMeta::new(name, &id(build), Source::Import { from: "/x".into() });
+        fake.store
+            .commit(&lock, &staged, meta, MakeCurrent::IfNewer)
+            .unwrap();
+    }
+    drop(lock);
+    let tx = fake.up(&Upgrade::All, false).unwrap();
+    assert!(tx.is_empty());
+    assert_eq!(
+        skipped(&tx),
+        [
+            ("custom".into(), SkipReason::NotSynced),
+            ("steamrt4".into(), SkipReason::NotSynced)
+        ]
+    );
+}
+
+#[test]
+fn download_only_upgrade_moves_nothing() {
+    let fake = Fake::new();
+    assert!(fake.commit(&fake.tx(&["sniper"], &opts()).unwrap()).ok());
+    fake.move_stable(SNIPER_NEW, "t2");
+    let options = TxOptions {
+        download_only: true,
+        ..opts()
+    };
+    let tx = Transaction::upgrade(
+        &fake.fetch,
+        &fake.sync,
+        &fake.store,
+        &catalog(),
+        &Upgrade::All,
+        &options,
+        &UpgradeOptions::default(),
+    )
+    .unwrap();
+    let report = fake.commit(&tx);
+    assert_eq!(report.downloaded.len(), 1);
+    assert_eq!(fake.store.current("sniper"), Some(id(SNIPER_OLD)));
+}

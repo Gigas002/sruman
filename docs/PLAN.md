@@ -723,9 +723,20 @@ Rules:
       real_archive`) extracts, commits and runs `Store::verify` at content
       depth: sniper 1.3 s extract, 8,505 entries clean; scout 0.5 s, 5,561
       entries clean.
-- [ ] **2.5** Upgrade (`Upgrade::All | Named`), with `-uu` allowing a build
+- [x] **2.5** Upgrade (`Upgrade::All | Named`), with `-uu` allowing a build
       older than `current` when the channel points there. Run `clean` after
       if configured.
+      _Done 2026-11-13:_ `Transaction::upgrade(…, &Upgrade::{All, Named},
+      &TxOptions, &UpgradeOptions { allow_downgrade })`: per runtime in
+      install order, the channel's build when it's newer than `current` (or
+      older with `-uu`; that item commits with `MakeCurrent::Always`). A
+      target that's installed already becomes a `Switch` (only `current`
+      moves, nothing downloads), applied before the items. `All` skips
+      runtimes without an index or catalog entry (`NotSynced`); `Named`
+      errors. `-w` downloads only and moves nothing. The old build stays
+      installed: running `Store::clean` after an upgrade (if `keep_versions`
+      is set) is the CLI's job in 4.x, since the library already has `clean`
+      and the policy comes from config.
 - [ ] **2.6** Integration tests: a small `std::net` HTTP fixture (no new
       dependency) serving a fake `images/` tree. Cover refresh, install with
       dependencies, upgrade, pin, downgrade, resume after a truncated
