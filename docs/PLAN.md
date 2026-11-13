@@ -495,10 +495,12 @@ Rules:
   lootrs' native runner or gaki would spawn, with wrappers already outside)
   and returns it wrapped in the runtime entry point plus prefix env.
 - **In use** = pressure-vessel's OFD read lock on any `<build>/var/tmp-*/.ref`
-  (container runtimes, any launcher), or sruman's own lock on
-  `<build>/.sruman.lock` (scout, scout-ldlp). The scout lock fd goes to the
-  child without CLOEXEC (through the container with `--pass-fd`), so it
-  outlives a detached `sruman`. `-R`/`-Sc` from any tool respect both.
+  (container runtimes, any launcher), or sruman's shared hold on
+  `<name>/<build>.lock` next to the build (every sruman launch, all runtime
+  kinds). pressure-vessel closes inherited fds, so the hold (and the prefix
+  lock) reach the game with `--pass-fd`; scout-ldlp has no container and
+  simply inherits them. Either way the locks outlive a detached `sruman`
+  and end with the game. `-R`/`-Sc` from any tool respect both.
 - Errors are `thiserror` enums per module. Validation and launch collect every
   problem, as lootrs does. Read-mostly public structs are `#[non_exhaustive]`
   and have constructors, so new knobs aren't breaking changes.
@@ -790,10 +792,26 @@ Rules:
       after the launcher drops its copies, until it exits. Bare `Exe` names
       and shells start in the prefix home, so the real home isn't shared as
       the cwd.
-- [ ] **3.2** `scout`: `<soldier>/run -- <scout>/scout-on-soldier-entry-point-v2 -- <exe>`,
+- [x] **3.2** `scout`: `<soldier>/run -- <scout>/scout-on-soldier-entry-point-v2 -- <exe>`,
       with the scout build dir shared RW. `scout-ldlp`: `<build>/run.sh <exe>`,
       prefix home through env only. Both hold `.sruman.lock` (`--pass-fd` for
       scout).
+      _Done 2026-11-13:_ scout: `<soldier>/run [runner_args] --pass-fd=… --
+      <scout>/scout-on-soldier-entry-point-v2 -- <exe> …`, with soldier's
+      `var/` as `PRESSURE_VESSEL_VARIABLE_DIR`, the scout build shared RW, and
+      both builds held; the container runtime comes from the catalog's
+      `depends`, and a missing soldier names `sruman -S soldier`. scout-ldlp:
+      `[wrappers] <build>/run.sh <exe> …`, no runner args or `--pass-fd` (the
+      holds are inherited directly), and a prefix sets `HOME` and
+      `XDG_{CONFIG,DATA,CACHE,STATE}_HOME` (`HomeMode::Env`). The lock is the
+      store's sibling `<name>/<build>.lock`, not a `.sruman.lock` inside the
+      build (the "In use" rule is updated).  **Real runs:** scout + soldier
+      and scout-ldlp were installed from Valve's server through
+      `tests/real_server.rs` (9.8 s and 2 s; soldier 8,737 and scout 5,561
+      entries verified), then `real_launch` (now `SRUMAN_REAL_STORE` +
+      `SRUMAN_REAL_RUNTIME`) ran a shell in each: scout through soldier with
+      three fds passed, writes in the prefix home, all locks held by the child
+      alone and released on exit; scout-ldlp with `HOME` in the prefix.
 - [ ] **3.3** `preflight(profile)` → problems without launching, each
       naming its fix (`sruman -S scout`, `sruman -Pn …`).
 - [ ] **3.4** `Target::Shell` for `-X --shell` (`PRESSURE_VESSEL_SHELL=instead`,
