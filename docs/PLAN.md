@@ -786,7 +786,7 @@ Rules:
       lootrs/gaki entry.  **Measured:** pressure-vessel closes inherited fds,
       so a lock merely inherited is gone while the game runs; with `--pass-fd`
       the game holds it. So every container launch passes its locks (not only
-      scout, as planned). The ignored `real_container_launch` test (real
+      scout, as planned). The ignored `real_launch` test (real
       sniper build, `SRUMAN_REAL_BUILD`) confirms: `$HOME` writes land in
       `<prefix>/home`, and the build and prefix stay locked by the child alone
       after the launcher drops its copies, until it exits. Bare `Exe` names
@@ -812,8 +812,17 @@ Rules:
       `SRUMAN_REAL_RUNTIME`) ran a shell in each: scout through soldier with
       three fds passed, writes in the prefix home, all locks held by the child
       alone and released on exit; scout-ldlp with `HOME` in the prefix.
-- [ ] **3.3** `preflight(profile)` → problems without launching, each
+- [x] **3.3** `preflight(profile)` → problems without launching, each
       naming its fix (`sruman -S scout`, `sruman -Pn …`).
+      _Done 2026-11-13:_ `launch::preflight(&profile, &LaunchContext) ->
+      Vec<Issue>`, the same `Issue`s as `-Pk`: the profile's validation first
+      (errors stop there), then the runtime builds (scout's soldier included),
+      the wrappers, a prefix path that's a file (errors), and shared paths
+      that don't exist (warnings: pressure-vessel skips them). Each error
+      names its fix (`sruman -S soldier`, `sruman -Qkk sniper`, `chmod +x`).
+      Nothing is locked or created; `-Pk`, `-Gk` and `-D` use it in Phase 4. A
+      missing profile is the CLI's (`sruman -Pn …`), since preflight takes a
+      profile.
 - [ ] **3.4** `Target::Shell` for `-X --shell` (`PRESSURE_VESSEL_SHELL=instead`,
       `PRESSURE_VESSEL_TERMINAL=tty`; scout-ldlp: `run.sh $SHELL`). Golden argv/env tests per
       runtime kind and per target (game, path, shell), with and without a

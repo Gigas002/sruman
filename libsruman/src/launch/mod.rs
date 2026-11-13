@@ -29,7 +29,7 @@ use std::{
 
 use crate::{
     catalog::{Catalog, Entry},
-    model::{Game, Profile, ShaderCache, SlrSection},
+    model::{Game, Issue, Issues, Profile, ShaderCache, SlrSection, Subject, ValidationContext},
     paths,
     prefix::{self, HomeMode, PrefixContext, PrefixUse},
     store::{Installed, Store},
@@ -688,6 +688,50 @@ pub fn prepare(
             Err(LaunchError { problems })
         }
     }
+}
+
+/// Checks what launching anything with `profile` needs, without launching
+/// or locking: the profile's own validation, its runtime builds (scout's
+/// soldier too), the wrappers, and the shared paths. Each problem names its
+/// fix. Empty when everything is in place.
+pub fn preflight(profile: &Profile, ctx: &LaunchContext) -> Vec<Issue> {
+    let validation = ValidationContext {
+        home: ctx.home,
+        catalog: ctx.catalog,
+    };
+    let mut issues = profile.validate(&validation);
+    if issues.iter().any(Issue::is_error) {
+        return issues;
+    }
+    let mut collect = Issues::new(Subject::Profile(profile.name.clone()));
+    let mut problems = Vec::new();
+    resolve_runtimes(&profile.slr, ctx, &mut problems);
+    resolve_wrappers(&profile.wrappers, ctx.search_path, &mut problems);
+    for problem in problems {
+        collect.error(problem);
+    }
+    for (field, paths) in [
+        ("slr.filesystems_rw", &profile.slr.filesystems_rw),
+        ("slr.filesystems_ro", &profile.slr.filesystems_ro),
+    ] {
+        for path in paths {
+            let expanded = paths::expand_tilde(path, ctx.home);
+            if !expanded.exists() {
+                collect.warn(format!(
+                    "`{field}`: {} doesn't exist, so it isn't shared",
+                    expanded.display()
+                ));
+            }
+        }
+    }
+    if let Some(prefix) = &profile.prefix {
+        let prefix = paths::expand_tilde(prefix, ctx.home);
+        if prefix.exists() && !prefix.is_dir() {
+            collect.error(format!("`prefix` {} is not a directory", prefix.display()));
+        }
+    }
+    issues.extend(collect.finish());
+    issues
 }
 
 fn check_exe(exe: &Path, problems: &mut Vec<String>) {

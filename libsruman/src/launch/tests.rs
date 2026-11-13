@@ -688,3 +688,69 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
         [ldlp.dir.join("run.sh").display().to_string(), "bash".into()]
     );
 }
+
+fn issue_text(issues: &[Issue]) -> Vec<String> {
+    issues.iter().map(ToString::to_string).collect()
+}
+
+#[test]
+fn preflight_is_empty_when_all_is_in_place() {
+    let w = World::new();
+    fs::create_dir_all(w.home.join("Music")).unwrap();
+    fs::create_dir_all(w.home.join("Games/Buckshot")).unwrap();
+    let mut profile = profile();
+    profile.slr.filesystems_ro.clear();
+    assert_eq!(
+        issue_text(&preflight(
+            &profile,
+            &w.ctx(std::slice::from_ref(&w.bin), &[])
+        )),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn preflight_names_each_fix() {
+    let w = World::new();
+    w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
+    let mut profile = profile();
+    profile.slr.runtime = "scout".parse().unwrap();
+    profile.wrappers.push("nothere".into());
+    let text = issue_text(&preflight(
+        &profile,
+        &w.ctx(std::slice::from_ref(&w.bin), &[]),
+    ));
+    let home = w.home.display();
+    assert_eq!(
+        text,
+        [
+            "error: profile `indie`: `scout` runs inside `soldier`, which is not installed; run `sruman -S soldier`".to_owned(),
+            "error: profile `indie`: wrapper `nothere` not found in PATH".into(),
+            format!("warning: profile `indie`: `slr.filesystems_rw`: {home}/Music doesn't exist, so it isn't shared"),
+            format!("warning: profile `indie`: `slr.filesystems_rw`: {home}/Games/Buckshot doesn't exist, so it isn't shared"),
+            "warning: profile `indie`: `slr.filesystems_ro`: /mnt/ro doesn't exist, so it isn't shared".into(),
+        ]
+    );
+
+    // Validation errors come first and stop the rest.
+    let mut broken = Profile::new("broken", "nope".parse().unwrap());
+    broken.prefix = Some("relative".into());
+    let text = issue_text(&preflight(&broken, &w.ctx(&[], &[])));
+    assert_eq!(text.len(), 2, "{text:#?}");
+    assert!(
+        text.iter()
+            .all(|t| t.starts_with("error: profile `broken`"))
+    );
+
+    // A prefix path that is a file.
+    fs::write(w.home.join("afile"), "").unwrap();
+    let mut file_prefix = Profile::new("f", "sniper".parse().unwrap());
+    file_prefix.prefix = Some("~/afile".into());
+    let text = issue_text(&preflight(&file_prefix, &w.ctx(&[], &[])));
+    assert_eq!(
+        text,
+        [format!(
+            "error: profile `f`: `prefix` {home}/afile is not a directory"
+        )]
+    );
+}
