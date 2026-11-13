@@ -21,7 +21,7 @@ flate2 = "1"
 # Whole-file OFD/POSIX lock probes (pressure-vessel's in-use protocol)
 # tar parsing only; sruman writes every entry itself (see install::extract).
 tar = { version = "0.4", default-features = false }
-rustix = { version = "1", features = ["fs"] }
+rustix = { version = "1", features = ["fs", "process"] }
 serde = { version = "1", features = ["derive"] }
 # SHA-256 for -Qkk (mtree digests) and archive checks
 sha2 = "0.11"

@@ -15,12 +15,15 @@ pub mod model;
 pub mod mtree;
 pub mod paths;
 pub mod prefix;
+pub mod process;
 pub mod progress;
 pub mod store;
 #[cfg(feature = "download")]
 pub mod sync;
 pub mod version;
 
+#[cfg(test)]
+pub(crate) mod test_lock;
 #[cfg(all(test, feature = "download"))]
 pub(crate) mod testutil;
 

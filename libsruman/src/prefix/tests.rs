@@ -43,6 +43,7 @@ fn usage<'a>(runtime: &'a str, profile: &'a str) -> PrefixUse<'a> {
 
 #[test]
 fn ensure_creates_skeleton_and_records_use() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let prefix = env.root.join("prefixes/indie");
     let prepared = ensure(&prefix, &usage("sniper", "a"), &env.ctx()).unwrap();
@@ -84,6 +85,7 @@ fn ensure_creates_skeleton_and_records_use() {
 
 #[test]
 fn ensure_keeps_existing_files_and_tolerates_a_broken_state() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let prefix = env.root.join("p");
     fs::create_dir_all(prefix.join("home/.local/share/game")).unwrap();
@@ -100,6 +102,7 @@ fn ensure_keeps_existing_files_and_tolerates_a_broken_state() {
 
 #[test]
 fn shared_launches_coexist_and_block_reset_and_remove() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let prefix = env.root.join("p");
     let a = ensure(&prefix, &usage("sniper", "a"), &env.ctx()).unwrap();
@@ -124,6 +127,7 @@ fn shared_launches_coexist_and_block_reset_and_remove() {
 
 #[test]
 fn locks_are_keyed_by_the_canonical_path() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let prefix = env.root.join("real");
     let link = env.root.join("link");
@@ -154,6 +158,7 @@ fn locks_are_keyed_by_the_canonical_path() {
 
 #[test]
 fn reset_empties_home_and_state_but_keeps_the_prefix() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let prefix = env.root.join("p");
     drop(ensure(&prefix, &usage("sniper", "a"), &env.ctx()).unwrap());
@@ -172,6 +177,7 @@ fn reset_empties_home_and_state_but_keeps_the_prefix() {
 
 #[test]
 fn remove_only_deletes_sruman_prefixes() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let plain = env.root.join("plain");
     fs::create_dir(&plain).unwrap();
@@ -193,6 +199,7 @@ fn remove_only_deletes_sruman_prefixes() {
 
 #[test]
 fn prefix_may_not_be_or_contain_the_home() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     for bad in [env.home.clone(), env.root.clone(), PathBuf::from("/")] {
         for result in [
@@ -223,6 +230,7 @@ fn prefix_may_not_be_or_contain_the_home() {
 
 #[test]
 fn sharing_lists_profiles_on_the_same_prefix() {
+    let _spawn = crate::test_lock::checks();
     let env = Env::new();
     let mut profiles = LoadedProfiles::default();
     for (name, prefix) in [

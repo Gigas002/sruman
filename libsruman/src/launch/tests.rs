@@ -319,6 +319,7 @@ fn a_non_executable_or_broken_build_is_named() {
 
 #[test]
 fn acquire_holds_the_build_and_the_prefix_for_the_launch() {
+    let _spawn = crate::test_lock::checks();
     let w = World::new();
     let game = w.game();
     let search = [w.bin.clone()];
@@ -364,6 +365,7 @@ fn acquire_holds_the_build_and_the_prefix_for_the_launch() {
 
 #[test]
 fn acquire_fails_cleanly_on_a_busy_prefix() {
+    let _spawn = crate::test_lock::checks();
     let w = World::new();
     let game = w.game();
     let plan = prepare(
@@ -425,6 +427,7 @@ fn wrap_is_usable_on_its_own() {
 #[test]
 #[ignore = "needs a real runtime (SRUMAN_REAL_BUILD or SRUMAN_REAL_STORE)"]
 fn real_launch() {
+    let _spawn = crate::test_lock::spawns();
     use std::process::{Command, Stdio};
 
     let mut w = World::new();
