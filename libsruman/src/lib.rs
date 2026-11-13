@@ -13,6 +13,8 @@ pub mod mtree;
 pub mod paths;
 pub mod prefix;
 pub mod store;
+#[cfg(feature = "download")]
+pub mod sync;
 pub mod version;
 
 /// Crate version, for state files and the User-Agent.

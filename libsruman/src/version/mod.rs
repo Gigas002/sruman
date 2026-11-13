@@ -149,7 +149,7 @@ impl fmt::Display for RuntimeRef {
 }
 
 /// Which pointer file on Valve's server picks "the latest" build.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Channel {
     /// `latest-public-stable`.
     #[default]

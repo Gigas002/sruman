@@ -289,8 +289,10 @@ impl Catalog {
                 pointers: over.pointers.clone().unwrap_or(def.pointers),
                 name: def.name,
             };
-            if !def.base_url.starts_with("https://") {
-                errors.push(invalid("`base_url` must start with `https://`"));
+            if !base_url_allowed(&def.base_url) {
+                errors.push(invalid(
+                    "`base_url` must start with `https://` (`http://` only for localhost)",
+                ));
                 continue;
             }
             if def.server_dir.is_empty()
@@ -391,4 +393,22 @@ impl Catalog {
             .filter(|def| def.depends.iter().any(|dep| dep == name))
             .collect()
     }
+}
+
+/// `https://` anywhere; plain `http://` only to this machine (a local
+/// mirror or a test server), since `SHA256SUMS` comes over the same
+/// connection as the archives it checks.
+fn base_url_allowed(url: &str) -> bool {
+    if url.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "::1") && !authority.contains('@')
 }
