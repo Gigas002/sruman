@@ -95,6 +95,8 @@ pub struct TxItem {
     pub url: String,
     /// The runtime's `current` build before the transaction.
     pub current: Option<BuildId>,
+    /// `Always` for a `-Suu` downgrade; `IfNewer` otherwise.
+    pub make_current: MakeCurrent,
 }
 
 impl TxItem {
@@ -119,6 +121,10 @@ pub enum SkipReason {
     Installed,
     /// A dependency with some build installed already.
     DependencySatisfied,
+    /// `-Su`: `current` is the channel's build (or newer, without `-uu`).
+    UpToDate,
+    /// `-Su`: the runtime isn't in the sync index (or the catalog).
+    NotSynced,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,8 +159,33 @@ impl TxOptions {
 pub struct Transaction {
     /// In install order (dependencies first).
     pub items: Vec<TxItem>,
+    /// `-Su` where the channel's build is installed already: only
+    /// `current` moves. Applied before `items`.
+    pub switches: Vec<Switch>,
     pub skipped: Vec<Skipped>,
     download_only: bool,
+}
+
+/// Point a runtime's `current` at an installed build.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Switch {
+    pub name: String,
+    pub from: Option<BuildId>,
+    pub to: BuildId,
+}
+
+/// Which runtimes `-Su` looks at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Upgrade {
+    /// Every installed runtime.
+    All,
+    Named(Vec<String>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UpgradeOptions {
+    /// `-uu`: also go back when the channel points to an older build.
+    pub allow_downgrade: bool,
 }
 
 /// What a transaction will do, for the `Proceed?` prompt.
@@ -174,6 +205,8 @@ pub struct TxSummary {
 #[derive(Debug, Default)]
 pub struct CommitReport {
     pub installed: Vec<Installed>,
+    /// `current` links moved by [`Transaction::switches`].
+    pub switched: Vec<Switch>,
     /// With `-w`: archives now verified in the cache.
     pub downloaded: Vec<PathBuf>,
     /// The item that failed, and why; later items weren't attempted.
@@ -325,12 +358,107 @@ impl Transaction {
             reason,
             archive,
             url,
+            make_current: MakeCurrent::IfNewer,
         });
         Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.items.is_empty() && self.switches.is_empty()
+    }
+
+    /// Resolves pacman's `-Su`: for each runtime, the channel's build when
+    /// it's newer than `current` (or older, with `allow_downgrade`).
+    /// Builds that are installed already only move `current`.
+    pub fn upgrade(
+        fetch: &dyn Fetch,
+        sync_dir: &SyncDir,
+        store: &Store,
+        catalog: &Catalog,
+        which: &Upgrade,
+        options: &TxOptions,
+        upgrade: &UpgradeOptions,
+    ) -> Result<Self, InstallError> {
+        let names: Vec<String> = match which {
+            Upgrade::Named(names) => names.clone(),
+            Upgrade::All => {
+                let mut names: Vec<String> =
+                    store.installed()?.into_iter().map(|i| i.name).collect();
+                names.dedup();
+                names
+            }
+        };
+        let mut tx = Self {
+            download_only: options.download_only,
+            ..Self::default()
+        };
+        let (known, unknown): (Vec<&String>, Vec<&String>) =
+            names.iter().partition(|name| catalog.get(name).is_some());
+        if let (Upgrade::Named(_), Some(name)) = (which, unknown.first()) {
+            return Err(CatalogError::Unknown {
+                name: (*name).clone(),
+                required_by: None,
+            }
+            .into());
+        }
+        for name in unknown {
+            tx.skipped.push(Skipped {
+                name: name.clone(),
+                build: store.current(name),
+                reason: SkipReason::NotSynced,
+            });
+        }
+        for def in catalog.install_order(known.iter().map(|n| n.as_str()))? {
+            if !names.contains(&def.name) {
+                continue;
+            }
+            let current = store.current(&def.name);
+            let Some(index) = sync_dir.load(&def.name) else {
+                if matches!(which, Upgrade::Named(_)) {
+                    return Err(InstallError::NotSynced(def.name.clone()));
+                }
+                tx.skipped.push(Skipped {
+                    name: def.name.clone(),
+                    build: current,
+                    reason: SkipReason::NotSynced,
+                });
+                continue;
+            };
+            let target = channel_build(&index, &def.name, options.channel)?;
+            let newer = current.as_ref().is_none_or(|c| target > *c);
+            let older = current.as_ref().is_some_and(|c| target < *c);
+            if !(newer || (older && upgrade.allow_downgrade)) {
+                tx.skipped.push(Skipped {
+                    name: def.name.clone(),
+                    build: current,
+                    reason: SkipReason::UpToDate,
+                });
+                continue;
+            }
+            let installed = store.installed_of(&def.name)?;
+            if installed.iter().any(|i| i.build == target) {
+                tx.switches.push(Switch {
+                    name: def.name.clone(),
+                    from: current,
+                    to: target,
+                });
+                continue;
+            }
+            tx.push(
+                fetch,
+                sync_dir,
+                catalog,
+                store,
+                def,
+                target,
+                Reason::Explicit,
+                options,
+            )?;
+            if older && let Some(item) = tx.items.last_mut() {
+                item.make_current = MakeCurrent::Always;
+            }
+        }
+        Ok(tx)
     }
 
     /// Sizes and package changes, for the prompt.
@@ -380,6 +508,16 @@ impl Transaction {
         cancel: &CancelFlag,
     ) -> CommitReport {
         let mut report = CommitReport::default();
+        if !self.download_only {
+            for switch in &self.switches {
+                if let Err(e) = store.set_current(lock, &switch.name, &switch.to) {
+                    report.failed = Some((format!("{} {}", switch.name, switch.to), e.into()));
+                    report.not_attempted = self.items.iter().map(TxItem::label).collect();
+                    return report;
+                }
+                report.switched.push(switch.clone());
+            }
+        }
         for (i, item) in self.items.iter().enumerate() {
             progress.begin(&item.label());
             let result = self.commit_item(item, fetch, store, lock, pkg_cache, progress, cancel);
@@ -453,7 +591,7 @@ impl Transaction {
                 sha256: item.archive.sha256.clone(),
             },
         );
-        match store.commit(lock, &staged, meta, MakeCurrent::IfNewer) {
+        match store.commit(lock, &staged, meta, item.make_current) {
             Ok(installed) => Ok(Done::Installed(Box::new(installed))),
             Err(e) => {
                 let _ = crate::store::remove_tree(&staged);
