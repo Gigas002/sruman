@@ -398,3 +398,20 @@ fn targets_resolve_like_a_shell() {
         Err(TargetError::Empty)
     );
 }
+
+#[test]
+fn prefix_may_not_swallow_the_home() {
+    let catalog = Catalog::builtin();
+    for prefix in ["~", "/home", "/"] {
+        let mut profile = Profile::new("p", "sniper".parse().unwrap());
+        profile.prefix = Some(prefix.into());
+        let text = messages(&profile.validate(&ctx(&catalog)));
+        assert!(
+            text.iter().any(|m| m.contains("is or contains your home")),
+            "{prefix}: {text:#?}"
+        );
+    }
+    let mut profile = Profile::new("p", "sniper".parse().unwrap());
+    profile.prefix = Some("~/prefixes/p".into());
+    assert!(profile.validate(&ctx(&catalog)).is_empty());
+}

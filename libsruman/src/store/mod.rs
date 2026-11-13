@@ -684,7 +684,7 @@ pub(crate) fn remove_tree(path: &Path) -> Result<(), StoreError> {
     }
 }
 
-fn make_dirs_writable(path: &Path) {
+pub(crate) fn make_dirs_writable(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let Ok(meta) = fs::symlink_metadata(path) else {
         return;

@@ -193,8 +193,14 @@ impl Profile {
     pub fn validate(&self, ctx: &ValidationContext) -> Vec<Issue> {
         let mut issues = Issues::new(Subject::Profile(self.name.clone()));
         issues.name(&self.name);
-        if let Some(prefix) = &self.prefix {
-            issues.absolute("prefix", prefix, ctx.home);
+        if let Some(prefix) = &self.prefix
+            && let Some(prefix) = issues.absolute("prefix", prefix, ctx.home)
+            && ctx.home.starts_with(&prefix)
+        {
+            issues.error(format!(
+                "`prefix` {} is or contains your home directory; give it a directory of its own",
+                prefix.display()
+            ));
         }
         if let Some(ShaderCache::Dir(dir)) = &self.shader_cache {
             issues.absolute("shader_cache", dir, ctx.home);
