@@ -1,33 +1,80 @@
-# rust-template
+# sruman
 
-Template for rust projects. Configures:
+**Steam Runtime Manager**: a pacman/paru-style package manager for the
+[Steam Linux Runtime](https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/blob/main/docs/container-runtime.md)
+that works without Steam, and a launcher that runs native Linux games inside
+those runtimes through lootrs-style games, profiles and prefixes.
 
-- typos checks via `.typos.toml`: run `typos .`
-- empty `LICENSE` file
-- basic `deny.toml`: run `cargo deny check licenses`
-- ready to use `CHANGELOG` file
-- minimalistic workspace-level `Cargo.toml`
-- basic `.gitignore` file
-- empty `examples/` directory for config/theme/etc examples
-- empty `docs/` directory for user and agent docs
-- weekly dependabot scans via `.github/dependabot.yml`
-- CI/CD jobs handled by GitHub Actions via `.github/workflows`
-    - three build jobs: minimal (`--no-default-features`), normal, full (`--all-features`) via `build.yml`
-    - deny check job via `deny.yml`
-    - automated deploy to GitHub releases and crates.io on new tag pushes
-    - automated crates.io `doc` build checks via `doc.yml`
-    - formatters checks: fmt, clippy-minimal (`--no-default-features`), clippy-normal, clippy-full (`--all-features`) via `lint.yml`
-    - typos check via `typos.yml`
-    - automated tests checks with `codecov` coverage reports:  via `test.yml`
+```sh
+wine game.exe                         # Windows game in a wine prefix
+sruman -p scout ./game.x86_64         # native game in a Steam Linux Runtime "prefix"
+```
 
-## Requires manual changes
+> **Status: early development.** Nothing below works yet. The design is in
+> [`docs/PLAN.md`](docs/PLAN.md); this README describes where it's going.
 
-Look for `TODO` markers and replace with your data.
+## What it does
 
-- `test.yml`: specify projects for `codecov` job
-- `deploy.yml`: binary and library crates paths to build and publish
+- **Runtimes as packages.** Installs, upgrades, pins, verifies and removes
+  builds of `scout`, `soldier`, `sniper` and `steamrt4` from Valve's
+  public image server (`repo.steampowered.com`), checked against Valve's
+  `SHA256SUMS`. It shows which Debian packages change between builds, and
+  several builds can be installed side by side.
+- **Prefixes for native games.** A profile picks a runtime and an optional
+  prefix directory. The game then gets the prefix as its home, so saves and
+  configs stay there instead of in your real home, the way a wine prefix keeps
+  `drive_c/users`. Several profiles can share one prefix.
+- **Games list.** `games.toml` uses lootrs' format, so `sruman <game>` and
+  `sruman <path>` both work.
+- **Library first.** `libsruman` holds all the logic, so
+  [lootrs](https://github.com/Gigas002/lootrs) and
+  [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.
 
-## Required environment variables
+## Planned usage
 
-- `CARGO_REGISTRY_TOKEN` for `deploy` job to crates.io
-- `CODECOV_TOKEN` for code coverage reports on `test` job
+```sh
+sruman -Syu                          # refresh the index and upgrade installed runtimes (also: plain `sruman`)
+sruman -S sniper                     # install a runtime
+sruman -S sniper=3.0.20261021.266025 # install a specific build
+sruman -Ss sniper / -Si sniper       # search / show a runtime
+sruman -Q / -Qi sniper / -Qu / -Qk   # installed, info, upgradable, verify
+sruman -R soldier                    # remove
+sruman -U ~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_sniper --link   # adopt Steam's copy
+
+sruman hollow-knight                 # run a game from games.toml
+sruman -p scout ./game.x86_64        # run a path with a profile
+sruman -P / -Pi scout / -Pk          # profiles: list, show, check
+sruman -G / -Gk                      # games: list, check
+sruman -Xs / -Xk hollow-knight       # running games / stop one
+sruman -D                            # check the system (user namespaces, runtime self-test)
+```
+
+## Requirements
+
+- Linux, x86_64 (arm64 later for `steamrt4`).
+- Unprivileged user namespaces, which most distributions enable. The container
+  runtimes use pressure-vessel, which Valve ships inside each runtime.
+  `scout-ldlp` runs without a container.
+- Steam is **not** required. Games that insist on a running Steam client still
+  need Steam (or gaki).
+
+## Files
+
+| What                     | Default location               |
+| ------------------------ | ------------------------------ |
+| Settings, games, profiles | `~/.config/sruman/`            |
+| Runtimes, prefixes        | `~/.local/share/sruman/`       |
+| Download cache, index     | `~/.cache/sruman/`             |
+| Logs                      | `~/.local/state/sruman/logs/`  |
+
+## Building
+
+```sh
+cargo build --release                       # sruman + libsruman with default features
+cargo build --release --no-default-features # no network code: manage and run existing runtimes only
+```
+
+## License
+
+GPL-3.0-or-later. The Steam Linux Runtime itself is Valve's and is downloaded
+from Valve's servers; sruman doesn't redistribute it.

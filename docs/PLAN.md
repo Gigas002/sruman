@@ -518,8 +518,11 @@ Rules:
       publishes `libsruman` then `sruman`; codecov covers both crates.
       `.typos.toml` allows `Pn` (the `-Pn` flag). `cargo deny check` and
       `typos` pass.
-- [ ] **0.3** Short README (what, install, quick start, links). Start
+- [x] **0.3** Short README (what, install, quick start, links). Start
       `CHANGELOG.md`.
+      _Done 2026-11-13:_ README covers what sruman is, its status (early,
+      nothing works yet), planned usage, requirements, file locations and
+      building. The CHANGELOG has an `Unreleased` entry.
 - [x] **0.4** **Spike.** _Done 2026-11-13:_ see "Spike results" above.
       Copy them into `docs/RUNTIMES.md` in 5.1.
 
