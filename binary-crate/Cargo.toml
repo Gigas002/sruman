@@ -1,0 +1,16 @@
+[package]
+name = "binary-crate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+description.workspace = true
+keywords.workspace = true
+repository.workspace = true
+
+[dependencies]
+library-crate = { package = "crate", path = "../crate", version = "0.1.0" }
+
+[features]
+default = []
+extra = ["library-crate/extra"]

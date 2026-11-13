@@ -1,0 +1,78 @@
+name: Test and coverage
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            cargo_args: --workspace --verbose
+          - name: all-features
+            cargo_args: --workspace --all-features --verbose
+          - name: no-default-features
+            cargo_args: --workspace --no-default-features --verbose
+
+    name: test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.name }}
+
+      - name: Run tests (${{ matrix.name }})
+        run: cargo test ${{ matrix.cargo_args }}
+
+  codecov:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: add your crates here
+        package: [binary-crate, crate]
+
+    name: codecov (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: codecov-${{ matrix.package }}
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --all-features -p ${{ matrix.package }} --lcov --output-path lcov-${{ matrix.package }}.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./lcov-${{ matrix.package }}.info
+          flags: ${{ matrix.package }}
+          name: ${{ matrix.package }}
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

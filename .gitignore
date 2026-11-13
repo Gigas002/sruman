@@ -1,0 +1,16 @@
+# Mac OS files
+.DS_Store
+
+# Project specific files
+build/
+.cache
+
+# Rust (workspace)
+/target
+
+# Editors files
+.vscode/
+.idea/
+.cursor/
+.zed/
+.zeditor/

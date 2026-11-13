@@ -1,0 +1,96 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # TODO: configure your crates (dependency order for publishing)
+  BINARY_CRATES: '["binary-crate"]'
+  PUBLISH_CRATES: '["crate", "binary-crate"]'
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    outputs:
+      binary: ${{ env.BINARY_CRATES }}
+      publish: ${{ env.PUBLISH_CRATES }}
+    steps:
+      - run: "true"
+
+  build-binary:
+    needs: configure
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.configure.outputs.binary) }}
+
+    name: build (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: deploy-${{ matrix.package }}
+
+      - name: Build release binary
+        run: cargo build -p ${{ matrix.package }} --release
+
+      - name: Strip and package
+        run: |
+          strip "target/release/${{ matrix.package }}"
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          tar -czf "${{ matrix.package }}-${VERSION}-x86_64-linux.tar.gz" -C target/release ${{ matrix.package }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.package }}
+          path: ${{ matrix.package }}-*.tar.gz
+
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-binary
+    if: github.event_name == 'push'
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: "*.tar.gz"
+          generate_release_notes: true
+
+  publish-crates-io:
+    needs: [configure, github-release]
+    strategy:
+      max-parallel: 1
+      matrix:
+        package: ${{ fromJSON(needs.configure.outputs.publish) }}
+
+    name: publish (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crate
+        run: cargo publish -p ${{ matrix.package }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
