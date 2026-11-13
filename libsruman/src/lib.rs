@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod fetch;
 #[cfg(feature = "download")]
 pub mod install;
+pub mod launch;
 pub mod manifest;
 pub mod model;
 pub mod mtree;
