@@ -6,7 +6,9 @@
 
 pub mod catalog;
 pub mod manifest;
+pub mod mtree;
 pub mod paths;
+pub mod store;
 pub mod version;
 
 /// Crate version, for state files and the User-Agent.

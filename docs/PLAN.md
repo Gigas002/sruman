@@ -400,11 +400,14 @@ sruman/
 
 ```text
 $XDG_CONFIG_HOME/sruman/config.toml, games.toml, profiles/<name>.toml
-$XDG_DATA_HOME/sruman/runtimes/<suite>/<build_id>/   # never modified by sruman after install; must stay user-writable (pressure-vessel opens files/.ref)
-                                     /<build_id>/var/      # pressure-vessel variable dir (hardlinked copies: same fs required)
-                                     /<build_id>/.sruman.toml  # source URL, archive sha256, linked?, installed-at
-                                     /<build_id>/.sruman.lock  # sruman's own in-use lock (scout, scout-ldlp)
-                                     current -> <build_id>
+$XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman changes the store (pacman's db.lck)
+                                     /.staging/            # partial installs/removals, wiped under the lock
+                                     /<name>/<build_id>/   # the build (a symlink when linked); never modified by sruman
+                                                           # after install, but must stay user-writable (pressure-vessel
+                                                           # opens files/.ref and writes var/: hardlinked copies, same fs)
+                                     /<name>/<build_id>.toml   # BuildMeta: source (download/import/link), installed-at
+                                     /<name>/<build_id>.lock   # sruman's shared hold while a game runs
+                                     /<name>/current -> <build_id>
 $XDG_DATA_HOME/sruman/prefixes/<name>/               # default prefix_root (prefix paths may be anywhere)
 $XDG_CACHE_HOME/sruman/sync/<suite>.toml             # -Sy index: channel → build, sizes, sums, manifest
 $XDG_CACHE_HOME/sruman/pkg/<suite>-<build>.tar.xz    # download cache (pacman's /var/cache/pacman/pkg)
@@ -569,7 +572,7 @@ Rules:
       (3.0.20261021.266025) and beta (3.0.20261110.268881) manifests,
       committed as fixtures (30 KB each): SDL3 and steam-runtime-tools
       changed. 5 tests.
-- [ ] **1.5** `store`: layout, `installed`, `resolve`, atomic `set_current`
+- [x] **1.5** `store`: layout, `installed`, `resolve`, atomic `set_current`
       (temp symlink + rename), `remove`, `clean(keep, pinned, in_use)`,
       `verify` (against the build's `mtree.txt.gz`), `import` (copy or
       link; detect the suite and build from `VERSION.txt`/`BUILD_ID.txt` and
@@ -579,6 +582,28 @@ Rules:
       holding an OFD read lock the way pressure-vessel does), "remove of a linked build only unregisters it",
       "resolve of a pinned build that's missing names the `sruman -S
       name=build` fix".
+      _Done 2026-11-13:_ Store with the layout above; metadata and holds sit
+      next to each build, so a linked build (Steam's own copy) is never
+      written to. lock() is a non-blocking exclusive store lock (Busy, like
+      pacman's db.lck) that wipes .staging. Also installed/installed_of,
+      resolve (current, or newest when current is missing; error messages name
+      the sruman -S fix), atomic set_current, commit/link with
+      MakeCurrent::{IfNewer, Always}, remove (rename then delete; linked
+      builds only unregister; current moves to the newest left), and clean
+      (keeps current, the newest N, pinned, linked and in-use builds, and
+      reports why). in_use combines sruman's flock hold (std File::lock) with
+      a POSIX write-lock probe on pressure-vessel's var/tmp-*/.ref: rustix's
+      fcntl_lock is POSIX, not OFD, but the two lock types conflict on Linux,
+      and a test holds a real OFD read lock from a python3 child. New mtree
+      module (BSD mtree with octal escapes, ignore/optional, contents=
+      objects) backs verify: top-level mtree.txt.gz plus each platform's usr-
+      mtree.txt.gz, objects only, skipping empty digest-less files that
+      pressure-vessel creates itself. store::import detects scout, scout-ldlp
+      and container runtimes (VERSIONS.txt depot line, platform-dir suffix,
+      version.txt) and copies (skipping var/) or links. Ignored tests pass
+      against the real Steam soldier/scout installs (Content verify included).
+      New deps: flate2, sha2, rustix (fs), toml; tempfile for tests. 27 new
+      tests.
 - [ ] **1.6** `model`: `Profile` (lootrs field names), `SlrSection`,
       `validate_name` (lootrs rules), `validate` → `Vec<Issue>`, `load_dir`,
       implicit profiles from the catalog. Fixtures under

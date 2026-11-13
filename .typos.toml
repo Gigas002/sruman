@@ -2,5 +2,7 @@
 ratatui = "ratatui"
 # pacman-style flags: -Pn (new profile)
 Pn = "Pn"
+# crate name flate2
+flate = "flate"
 [files]
 extend-exclude = [ "target/", ]

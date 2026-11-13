@@ -13,6 +13,13 @@ version = "0.1.0"
 
 [workspace.dependencies]
 libsruman = { path = "libsruman", version = "0.1.0", default-features = false }
+# gzip for runtime file lists (mtree.txt.gz); pure-Rust miniz_oxide backend
+flate2 = "1"
+# Whole-file OFD/POSIX lock probes (pressure-vessel's in-use protocol)
+rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
+# SHA-256 for -Qkk (mtree digests) and archive checks
+sha2 = "0.11"
+tempfile = "3"
 thiserror = "2"
 toml = "1"
