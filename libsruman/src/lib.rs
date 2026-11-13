@@ -7,6 +7,8 @@
 pub mod catalog;
 #[cfg(feature = "download")]
 pub mod fetch;
+#[cfg(feature = "download")]
+pub mod install;
 pub mod manifest;
 pub mod model;
 pub mod mtree;
@@ -17,6 +19,9 @@ pub mod store;
 #[cfg(feature = "download")]
 pub mod sync;
 pub mod version;
+
+#[cfg(all(test, feature = "download"))]
+pub(crate) mod testutil;
 
 /// Crate version, for state files and the User-Agent.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

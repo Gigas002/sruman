@@ -1,13 +1,5 @@
-use std::{
-    io::{self, Read},
-    sync::Mutex,
-};
-
 use super::*;
-use crate::{
-    catalog::RuntimeOverride,
-    fetch::{Body, Head},
-};
+use crate::{catalog::RuntimeOverride, testutil::MemFetch};
 
 const BASE: &str = "https://fake";
 const OLD: &str = "3.0.20261021.266025";
@@ -22,62 +14,29 @@ fn fixture(path: &str) -> String {
     .unwrap()
 }
 
-/// An in-memory server that logs every request.
+/// [`MemFetch`] with paths relative to [`BASE`].
 #[derive(Default)]
-struct MemFetch {
-    files: Mutex<BTreeMap<String, Vec<u8>>>,
-    log: Mutex<Vec<String>>,
-}
+struct Server(MemFetch);
 
-impl MemFetch {
+impl Server {
     fn put(&self, path: &str, data: impl Into<Vec<u8>>) {
-        self.files
-            .lock()
-            .unwrap()
-            .insert(format!("{BASE}{path}"), data.into());
+        self.0.put(&format!("{BASE}{path}"), data);
     }
 
     fn remove(&self, path: &str) {
-        self.files.lock().unwrap().remove(&format!("{BASE}{path}"));
+        self.0.remove(&format!("{BASE}{path}"));
     }
 
     fn take_log(&self) -> Vec<String> {
-        std::mem::take(&mut *self.log.lock().unwrap())
-    }
-
-    fn find(&self, url: &str) -> Result<Vec<u8>, FetchError> {
-        self.files
-            .lock()
-            .unwrap()
-            .get(url)
-            .cloned()
-            .ok_or_else(|| FetchError::Status {
-                url: url.to_owned(),
-                status: 404,
-            })
+        self.0.take_log()
     }
 }
 
-impl Fetch for MemFetch {
-    fn head(&self, url: &str) -> Result<Head, FetchError> {
-        self.log.lock().unwrap().push(format!("HEAD {url}"));
-        Ok(Head {
-            len: Some(self.find(url)?.len() as u64),
-            last_modified: None,
-        })
-    }
+impl std::ops::Deref for Server {
+    type Target = MemFetch;
 
-    fn get_from(&self, url: &str, offset: u64) -> Result<Body, FetchError> {
-        self.log.lock().unwrap().push(format!("GET {url}"));
-        let data = self.find(url)?;
-        let total = data.len() as u64;
-        let reader: Box<dyn Read + Send> =
-            Box::new(io::Cursor::new(data[offset as usize..].to_vec()));
-        Ok(Body {
-            start: offset,
-            total: Some(total),
-            reader,
-        })
+    fn deref(&self) -> &MemFetch {
+        &self.0
     }
 }
 
@@ -111,7 +70,7 @@ fn sums(build: &str, archive: &[u8]) -> String {
 }
 
 /// Publishes a sniper build on the fake server.
-fn publish(server: &MemFetch, build: &str, manifest: &str) {
+fn publish(server: &Server, build: &str, manifest: &str) {
     let dir = format!("/steamrt3/images/{build}");
     let archive = format!("archive {build}").into_bytes();
     let p = "com.valvesoftware.SteamRuntime.Platform-amd64,i386-sniper";
@@ -131,8 +90,8 @@ fn publish(server: &MemFetch, build: &str, manifest: &str) {
     );
 }
 
-fn server() -> MemFetch {
-    let server = MemFetch::default();
+fn server() -> Server {
+    let server = Server::default();
     publish(&server, OLD, &format!("{OLD}.sniper.manifest.dpkg"));
     publish(&server, NEW, &format!("{NEW}.sniper.manifest.dpkg"));
     server.put(
@@ -174,7 +133,7 @@ fn refresh_records_channels_builds_and_manifests() {
     let server = server();
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     assert_eq!(results.len(), 1);
     let RefreshOutcome::Updated { changed } = &results[0].1 else {
         panic!("{results:?}");
@@ -210,10 +169,10 @@ fn unchanged_timestamp_costs_one_request() {
     let server = server();
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
-    refresh(&server, &catalog(), &dir, &only("sniper"));
+    refresh(&*server, &catalog(), &dir, &only("sniper"));
     server.take_log();
 
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     assert!(matches!(results[0].1, RefreshOutcome::UpToDate));
     assert_eq!(
         server.take_log(),
@@ -225,7 +184,7 @@ fn unchanged_timestamp_costs_one_request() {
         force: true,
         ..only("sniper")
     };
-    let results = refresh(&server, &catalog(), &dir, &forced);
+    let results = refresh(&*server, &catalog(), &dir, &forced);
     let RefreshOutcome::Updated { changed } = &results[0].1 else {
         panic!("{results:?}");
     };
@@ -239,7 +198,7 @@ fn a_new_build_is_fetched_and_dropped_builds_pruned() {
     let server = server();
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
-    refresh(&server, &catalog(), &dir, &only("sniper"));
+    refresh(&*server, &catalog(), &dir, &only("sniper"));
 
     // Stable moves to NEW; OLD is no longer referenced.
     server.put(
@@ -249,7 +208,7 @@ fn a_new_build_is_fetched_and_dropped_builds_pruned() {
     server.put("/steamrt3/images/latest-public-stable.txt", NEW);
     server.put("/steamrt3/images/latest-container-runtime-depot.txt", NEW);
     server.take_log();
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     let RefreshOutcome::Updated { changed } = &results[0].1 else {
         panic!("{results:?}");
     };
@@ -264,16 +223,16 @@ fn a_new_build_is_fetched_and_dropped_builds_pruned() {
     assert!(dir.manifest("sniper", &id(NEW)).is_some());
 
     // A pinned build can be added back on purpose.
-    let info = add_build(&server, &catalog(), &dir, "sniper", &id(OLD)).unwrap();
+    let info = add_build(&*server, &catalog(), &dir, "sniper", &id(OLD)).unwrap();
     assert!(info.has_manifest);
     assert!(dir.load("sniper").unwrap().builds.contains_key(&id(OLD)));
     assert!(dir.manifest("sniper", &id(OLD)).is_some());
     // Known builds are not refetched.
     server.take_log();
-    add_build(&server, &catalog(), &dir, "sniper", &id(OLD)).unwrap();
+    add_build(&*server, &catalog(), &dir, "sniper", &id(OLD)).unwrap();
     assert!(server.take_log().is_empty());
     assert!(matches!(
-        add_build(&server, &catalog(), &dir, "nope", &id(OLD)),
+        add_build(&*server, &catalog(), &dir, "nope", &id(OLD)),
         Err(SyncError::UnknownRuntime(_))
     ));
 }
@@ -292,7 +251,7 @@ fn steam_channel_falls_back_and_missing_pointers_are_skipped() {
     server.remove("/steamrt3/images/latest-public-beta.txt");
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
-    refresh(&server, &catalog(), &dir, &only("sniper"));
+    refresh(&*server, &catalog(), &dir, &only("sniper"));
     let index = dir.load("sniper").unwrap();
     assert_eq!(index.channels[&Channel::Steam], id(NEW));
     assert!(!index.channels.contains_key(&Channel::Beta));
@@ -304,7 +263,7 @@ fn failures_are_per_runtime_and_keep_the_old_index() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
     let all = RefreshOptions::default();
-    let results = refresh(&server, &catalog(), &dir, &all);
+    let results = refresh(&*server, &catalog(), &dir, &all);
     let names: Vec<&str> = results.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(
         names,
@@ -326,7 +285,7 @@ fn failures_are_per_runtime_and_keep_the_old_index() {
     let before = dir.load("sniper").unwrap();
     server.put("/steamrt3/images/update-timestamp.txt", "later");
     server.put("/steamrt3/images/latest-public-stable.txt", "garbage!");
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     let RefreshOutcome::Failed(err) = &results[0].1 else {
         panic!("{results:?}");
     };
@@ -341,7 +300,7 @@ fn build_without_its_archive_is_an_error() {
         &format!("/steamrt3/images/{OLD}/SHA256SUMS"),
         format!("{} *other.tar.xz\n", "a".repeat(64)),
     );
-    let err = fetch_build(&server, catalog().get("sniper").unwrap(), &id(OLD), None).unwrap_err();
+    let err = fetch_build(&*server, catalog().get("sniper").unwrap(), &id(OLD), None).unwrap_err();
     assert!(
         err.to_string()
             .contains("lists none of SteamLinuxRuntime_sniper.tar.xz"),
@@ -354,17 +313,17 @@ fn broken_or_moved_index_is_refetched() {
     let server = server();
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
-    refresh(&server, &catalog(), &dir, &only("sniper"));
+    refresh(&*server, &catalog(), &dir, &only("sniper"));
     fs::write(tmp.path().join("sniper.toml"), "broken = [").unwrap();
     assert!(dir.load("sniper").is_none());
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     assert!(matches!(results[0].1, RefreshOutcome::Updated { .. }));
 
     // A different base URL doesn't trust the old timestamp.
     let mut index = dir.load("sniper").unwrap();
     index.images_url = "https://elsewhere/steamrt3/images".into();
     dir.save(&index).unwrap();
-    let results = refresh(&server, &catalog(), &dir, &only("sniper"));
+    let results = refresh(&*server, &catalog(), &dir, &only("sniper"));
     assert!(matches!(results[0].1, RefreshOutcome::Updated { .. }));
 }
 
@@ -423,6 +382,6 @@ fn autoindex_is_tolerant() {
 fn list_builds_reads_the_images_page() {
     let server = server();
     server.put("/steamrt3/images/", fixture("server/steamrt3-images.html"));
-    let builds = list_builds(&server, catalog().get("sniper").unwrap(), Some(3)).unwrap();
+    let builds = list_builds(&*server, catalog().get("sniper").unwrap(), Some(3)).unwrap();
     assert!(builds.contains(&id(NEW)));
 }

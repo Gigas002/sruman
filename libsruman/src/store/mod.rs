@@ -462,6 +462,24 @@ impl Store {
             || held_by_pressure_vessel(&build.dir.join("var"))
     }
 
+    /// The package list shipped inside a container build
+    /// (`<suite>_platform_<build>/files/manifest.dpkg`); `None` for builds
+    /// without one (scout-ldlp) or when it's unreadable.
+    pub fn manifest(&self, build: &Installed) -> Option<crate::manifest::Manifest> {
+        let entries = fs::read_dir(&build.dir).ok()?;
+        let path = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.contains("_platform_"))
+                    && path.join("files/manifest.dpkg").is_file()
+            })?
+            .join("files/manifest.dpkg");
+        crate::manifest::Manifest::parse(&fs::read_to_string(path).ok()?).ok()
+    }
+
     /// Takes a shared hold on `build` for a game launch.
     pub fn hold(&self, build: &Installed) -> Result<BuildHold, StoreError> {
         let path = self.hold_path(&build.name, &build.build);

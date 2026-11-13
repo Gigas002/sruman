@@ -12,10 +12,15 @@ repository = "https://github.com/Gigas002/sruman"
 version = "0.1.0"
 
 [workspace.dependencies]
+# xz: pure Rust, with a multithreaded block decoder (Valve's archives are
+# multi-block: ~1.1 s vs ~9 s single-threaded for sniper); no C build.
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "optimization"] }
 libsruman = { path = "libsruman", version = "0.1.0", default-features = false }
 # gzip for runtime file lists (mtree.txt.gz); pure-Rust miniz_oxide backend
 flate2 = "1"
 # Whole-file OFD/POSIX lock probes (pressure-vessel's in-use protocol)
+# tar parsing only; sruman writes every entry itself (see install::extract).
+tar = { version = "0.4", default-features = false }
 rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }
 # SHA-256 for -Qkk (mtree digests) and archive checks

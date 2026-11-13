@@ -411,7 +411,7 @@ $XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman c
 $XDG_DATA_HOME/sruman/prefixes/<name>/               # default prefix_root (prefix paths may be anywhere)
 $XDG_CACHE_HOME/sruman/sync/<name>.toml              # -Sy index: timestamp, channel → build; per build: archives (sha256, size), os-release
 $XDG_CACHE_HOME/sruman/sync/manifests/<name>-<build>.manifest.dpkg   # package list of each indexed build
-$XDG_CACHE_HOME/sruman/pkg/<suite>-<build>.tar.xz    # download cache (pacman's /var/cache/pacman/pkg)
+$XDG_CACHE_HOME/sruman/pkg/<name>-<build>-<archive>  # download cache (pacman's /var/cache/pacman/pkg); <file>.part while downloading
 $XDG_STATE_HOME/sruman/logs/                         # app log; games/<game>/, exec/<profile>/ run logs (lootrs runlog format)
 $XDG_RUNTIME_DIR/sruman/                             # locks: per build in use, per prefix
 ```
@@ -687,7 +687,7 @@ Rules:
       `ProgressReader`, which reports reads and fails with an error wrapping
       `Cancelled` (`is_cancelled`) so a stream copy stops promptly. Not
       feature-gated: `-Qkk` verification can report through it too.
-- [ ] **2.4** `install::Transaction`: resolve targets + `depends` (pacman
+- [x] **2.4** `install::Transaction`: resolve targets + `depends` (pacman
       order), skip installed with `needed`, then a summary with sizes and
       manifest diffs. `commit` streams each archive into `pkg/` with `Range`
       resume while hashing, verifies against `SHA256SUMS`, extracts into
@@ -697,6 +697,32 @@ Rules:
       directory, creates `var/`, renames into place, and flips `current`. Each item
       commits atomically and a failure leaves earlier items installed (pacman
       semantics). Pick and justify the xz and tar crates here.
+      _Done 2026-11-13:_ `install::Transaction`: `install()` resolves targets
+      in `install_order` (dependencies first; a dependency with any build
+      installed is satisfied; an exact installed build is skipped, since
+      builds never change; a pinned build missing from the index is fetched
+      with `sync::add_build`). `summary()` gives download size (minus cache
+      and `.part`), installed size from the manifest, and a package diff
+      against the current build's own `files/manifest.dpkg`
+      (`Store::manifest`). `commit()` per item: `download` (cache hit
+      verified, `Range` resume of `.part`, one restart if a resumed file fails
+      the sum), extract into staging, create `var/`, `Store::commit` with
+      `IfNewer`; it stops at the first failure with earlier items installed,
+      and lists the rest as not attempted. `-w` (`download_only`) stops after
+      verifying.  **Crates:** `lzma-rust2` (pure Rust; its multithreaded block
+      decoder needs `Seek`, which the cache file gives): 1.15 s for sniper's
+      822 MB tar vs 0.9 s for system `xz -T0` and 9.2 s single-threaded, no C
+      build (unlike `liblzma`/`xz2`). `tar` (no default features) only parses;
+      `install::extract` writes every entry itself with `create_new`, accepts
+      only files, directories and symlinks whose target is relative with `..`
+      only as a leading prefix (a lexical check alone lets `s -> .` + `l ->
+      s/..` escape; all 1,520 symlinks in Valve's archives have the strict
+      form), refuses writing through or over symlinks, hardlinks, devices and
+      FIFOs, drops setuid/setgid/sticky and keeps builds owner-writable.
+      **Real archives:** an ignored test (`SRUMAN_REAL_ARCHIVE=… -- --ignored
+      real_archive`) extracts, commits and runs `Store::verify` at content
+      depth: sniper 1.3 s extract, 8,505 entries clean; scout 0.5 s, 5,561
+      entries clean.
 - [ ] **2.5** Upgrade (`Upgrade::All | Named`), with `-uu` allowing a build
       older than `current` when the channel points there. Run `clean` after
       if configured.
