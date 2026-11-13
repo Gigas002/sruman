@@ -12,6 +12,7 @@ pub mod model;
 pub mod mtree;
 pub mod paths;
 pub mod prefix;
+pub mod progress;
 pub mod store;
 #[cfg(feature = "download")]
 pub mod sync;
