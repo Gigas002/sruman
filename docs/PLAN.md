@@ -528,9 +528,13 @@ Rules:
 
 ### Phase 1 — library core (no network)
 
-- [ ] **1.1** `paths`: `XdgDirs`, `AppDirs` (config, profiles, runtimes,
+- [x] **1.1** `paths`: `XdgDirs`, `AppDirs` (config, profiles, runtimes,
       prefix root, sync cache, pkg cache, logs, locks), `expand_tilde`. Same
       shape as `liblootrs::paths`.
+      _Done 2026-11-13:_ XdgDirs (now with cache_home) and AppDirs (config,
+      profiles, games_file, runtimes, prefixes, sync_cache, pkg_cache, logs,
+      locks with the state-dir fallback) and expand_tilde, in
+      liblootrs::paths' shape; 7 tests. thiserror is the first dependency.
 - [ ] **1.2** `version`: `BuildId` (parse, numeric `Ord`, `Display`),
       `RuntimeRef` (`name` | `name=build`), `Channel` + pointer-file fallbacks.
 - [ ] **1.3** `catalog`: built-in `RuntimeDef`s from the table above

@@ -13,7 +13,7 @@ name = "sruman"
 path = "src/main.rs"
 
 [dependencies]
-libsruman = { path = "../libsruman", version = "0.1.0", default-features = false }
+libsruman.workspace = true
 
 [features]
 default = []
