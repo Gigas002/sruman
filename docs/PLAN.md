@@ -737,11 +737,22 @@ Rules:
       installed: running `Store::clean` after an upgrade (if `keep_versions`
       is set) is the CLI's job in 4.x, since the library already has `clean`
       and the policy comes from config.
-- [ ] **2.6** Integration tests: a small `std::net` HTTP fixture (no new
+- [x] **2.6** Integration tests: a small `std::net` HTTP fixture (no new
       dependency) serving a fake `images/` tree. Cover refresh, install with
       dependencies, upgrade, pin, downgrade, resume after a truncated
       download, and a checksum mismatch. Add one `#[ignore]`d test against the
       real server, with manual steps in `docs/RUNTIMES.md`.
+      _Done 2026-11-13:_ `libsruman/tests/install.rs`: `UreqFetch` over real
+      HTTP against `tests/support/http.rs` serving a fake `images/` tree
+      (`tests/support/images.rs`, loopback `http://` base): refresh, install
+      with dependencies (scout → soldier), pin, upgrade with a package diff,
+      `-uu` back as a `current` switch with no download, resume of a cut
+      download with one `Range` request (the summary counts only the missing
+      bytes), a tampered archive rejected and not cached, `-w` then install
+      with the archive gone from the server, and every request's User-Agent.
+      `tests/real_server.rs` (`#[ignore]`) ran once on 2026-11-13: all five
+      runtimes refreshed, sniper installed in 5.9 s and 8,505 entries verified
+      at content depth. Manual steps in `docs/RUNTIMES.md`.
 
 ### Phase 3 — launch
 
