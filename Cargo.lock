@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "binary-crate"
+name = "libsruman"
 version = "0.1.0"
-dependencies = [
- "crate",
-]
 
 [[package]]
-name = "crate"
+name = "sruman"
 version = "0.1.0"
+dependencies = [
+ "libsruman",
+]

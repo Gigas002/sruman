@@ -503,9 +503,12 @@ Rules:
 
 ### Phase 0 — housekeeping and spike
 
-- [ ] **0.1** Rename crates: `crate/` → `libsruman/`, `binary-crate/` →
+- [x] **0.1** Rename crates: `crate/` → `libsruman/`, `binary-crate/` →
       `sruman/` (`[[bin]] name = "sruman"`). Fix workspace members, the
       `library-crate` alias, and drop the template `extra` features.
+      _Done 2026-11-13:_ both crates renamed; the template's greet code and
+      `extra` features are gone, so `libsruman` exports only `VERSION` and
+      `sruman` prints it. Build, tests, clippy and fmt pass.
 - [ ] **0.2** Metadata: GPL-3.0-or-later in `[workspace.package]`, full GPL
       text in `LICENSE`, the `deny.toml` license allowlist, description,
       keywords, repository, and the template `TODO`s in `test.yml`/`deploy.yml`.
