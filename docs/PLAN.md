@@ -628,9 +628,19 @@ Rules:
       home)`: `/` or `~` makes a path (made absolute), a game name wins over a
       same-named file, an unknown name gets a `./name` hint only for files.
       `examples/games.toml` is loaded and validated in `tests/examples.rs`.
-- [ ] **1.7** `prefix`: `ensure` (skeleton, state file, reconcile), `reset`,
+- [x] **1.7** `prefix`: `ensure` (skeleton, state file, reconcile), `reset`,
       shared/exclusive locks keyed by path hash, `Busy` error, and "which
       profiles share this prefix".
+      _Done 2026-11-13:_ `prefix`: `ensure(prefix, &PrefixUse,
+      &PrefixContext)` creates `home/` and the XDG skeleton, records the
+      runtime/build/profile/home mode in `.sruman.toml` and returns a shared
+      `PrefixLock` (its `fd()` passes to the child); `reset` (empties `home/`
+      and the state) and `remove` (only a dir with `.sruman.toml`, symlinks
+      not followed) take it exclusively, so a running game gives `Busy`;
+      `in_use`; `sharing`. Lock files are `prefix-<sha256 of the canonical
+      path, 16 hex>.lock` (a stable hash, so sruman, lootrs and gaki agree). A
+      prefix that is or contains the real home is refused here and is an error
+      in `Profile::validate`.
 
 ### Phase 2 — sync and transactions (`download`)
 
@@ -717,7 +727,11 @@ Rules:
       (command, env set, runtime build + os-release, system header, output,
       exit status) with `log_keep` rotation, in `logs/games/<game>/` (with a
       `latest.log` link) or `logs/exec/<profile>/`. Refuse a second instance
-      of a running game (exit 4).
+      of a running game (exit 4). Drop the store lock before spawning (an
+      install-then-run must not hand the game the `db.lck` fd): flocks
+      follow the open file, so even a `CLOEXEC` fd stays locked in the child
+      until its exec, and an inherited non-`CLOEXEC` one for the whole run.
+      Only the `BuildHold` and `PrefixLock` fds are passed on purpose.
 - [ ] **4.6** `tests/cli.rs`: parse matrix, `-Pk`/`-Gk` on examples, and
       `sruman <game>` / `sruman <path>` against a fake runtime whose `run` is a script echoing argv/env, run
       against the fixture HTTP server from 2.6 for `-S`/`-Syu`.
