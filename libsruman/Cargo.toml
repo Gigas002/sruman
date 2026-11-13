@@ -30,4 +30,6 @@ ureq = { workspace = true, optional = true }
 [dev-dependencies]
 # Tests build .tar.xz fixtures.
 lzma-rust2 = { workspace = true, features = ["encoder"] }
+sha2.workspace = true
+tar.workspace = true
 tempfile.workspace = true
