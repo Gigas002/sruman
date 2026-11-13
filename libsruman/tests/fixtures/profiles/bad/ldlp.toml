@@ -1,0 +1,7 @@
+name = "ldlp"
+prefix = "~/p"
+runner_args = ["--verbose"]
+
+[slr]
+runtime = "scout-ldlp"
+filesystems_ro = ["~/x"]

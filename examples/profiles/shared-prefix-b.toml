@@ -1,0 +1,10 @@
+# The second profile on the shared `indie` prefix (see shared-prefix-a.toml).
+
+name = "shared-prefix-b"
+prefix = "~/.local/share/sruman/prefixes/indie"
+
+[env]
+SDL_VIDEODRIVER = "wayland"
+
+[slr]
+runtime = "soldier"

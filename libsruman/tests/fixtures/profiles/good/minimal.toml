@@ -1,0 +1,4 @@
+name = "minimal"
+
+[slr]
+runtime = "soldier"
