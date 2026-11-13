@@ -5,6 +5,8 @@
 //! configuration files on its own; callers pass resolved values in.
 
 pub mod catalog;
+#[cfg(feature = "diag")]
+pub mod diag;
 #[cfg(feature = "download")]
 pub mod fetch;
 #[cfg(feature = "download")]

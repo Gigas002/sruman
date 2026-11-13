@@ -439,7 +439,7 @@ auto_install = false          # missing runtime at launch: false → [Y/n] promp
 | ----------- | ---------- | ------- | ------------------------------------------ | ---------------------------------------- |
 | `libsruman` | `download` | yes     | xz decoder, `tar`                          | `Fetch` trait, sync index, install, upgrade |
 | `libsruman` | `ureq`     | yes     | `ureq` (rustls on ring, webpki roots); implies `download` | `UreqFetch`, the default `Fetch` (gaki enables only `download` and brings its own client) |
-| `libsruman` | `diag`     | no      | —                                          | doctor checks                            |
+| `libsruman` | `diag`     | no      | `serde_json` (system-info's report)       | doctor checks                            |
 | `sruman`    | `download` | yes     | `libsruman/download`                       | `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`  |
 | `sruman`    | `json`     | yes     | `serde_json`                               | `--json`                                 |
 
@@ -851,9 +851,22 @@ Rules:
       the crate-wide `test_lock`, and every lock-checking test takes it:
       before that, the fork window caused about 1 failure in 3 runs. The suite
       is now clean over 200 runs.
-- [ ] **3.6** `diag` (feature): `unprivileged_userns_clone`,
+- [x] **3.6** `diag` (feature): `unprivileged_userns_clone`,
       `max_user_namespaces`, Ubuntu's AppArmor userns restriction, and a
       wrapper around the runtime's `steam-runtime-system-info`.
+      _Done 2026-11-14:_ `diag` returns `Finding { check, level, message, hint
+      }`s. `Kernel::read()` explains the userns sysctls; when the runtime's
+      `srt-bwrap` is known, the AppArmor hint names it. `bwrap_probe` runs
+      `srt-bwrap --unshare-user --ro-bind / / true`, which is the verdict.
+      `check_requirements`, and `system_info`, which keeps the raw JSON and
+      summarizes bubblewrap_ok, nested containers, `can-run` per architecture
+      (i386 is only a warning), CPU features and locales. `tools_for` finds
+      the tools: pressure-vessel(-arm64) for containers, soldier's for scout,
+      `run.sh` plus `amd64/usr/bin` for scout-ldlp. Tools run with a timeout,
+      and readers held open by a grandchild are abandoned after 1 s. Adds
+      optional `serde_json`. Real run against soldier: everything ok, plus the
+      expected i386 warning on this host; scout-ldlp's tools work through
+      `run.sh`.
 
 ### Phase 4 — the `sruman` binary
 

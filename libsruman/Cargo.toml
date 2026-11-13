@@ -15,12 +15,16 @@ download = ["dep:lzma-rust2", "dep:tar"]
 # `UreqFetch`, the default `Fetch`. Callers with their own HTTP client
 # (gaki) enable only `download` and implement `Fetch`.
 ureq = ["download", "dep:ureq"]
+# Doctor checks (`sruman -D`): userns sysctls, the runtime's bwrap and
+# steam-runtime-system-info.
+diag = ["dep:serde_json"]
 
 [dependencies]
 flate2.workspace = true
 lzma-rust2 = { workspace = true, optional = true }
 rustix.workspace = true
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
 sha2.workspace = true
 tar = { workspace = true, optional = true }
 thiserror.workspace = true
