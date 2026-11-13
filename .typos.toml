@@ -1,4 +1,6 @@
 [default.extend-words]
 ratatui = "ratatui"
+# pacman-style flags: -Pn (new profile)
+Pn = "Pn"
 [files]
 extend-exclude = [ "target/", ]

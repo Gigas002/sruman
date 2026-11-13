@@ -11,9 +11,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # TODO: configure your crates (dependency order for publishing)
-  BINARY_CRATES: '["binary-crate"]'
-  PUBLISH_CRATES: '["crate", "binary-crate"]'
+  # Dependency order for publishing
+  BINARY_CRATES: '["sruman"]'
+  PUBLISH_CRATES: '["libsruman", "sruman"]'
 
 jobs:
   configure:

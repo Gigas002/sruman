@@ -42,8 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # TODO: add your crates here
-        package: [binary-crate, crate]
+        package: [sruman, libsruman]
 
     name: codecov (${{ matrix.package }})
     runs-on: ubuntu-latest

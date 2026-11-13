@@ -4,11 +4,11 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-license = "MIT"
-homepage = ""
-description = ""
-keywords = []
-repository = ""
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/Gigas002/sruman"
+description = "Steam Linux Runtime manager: install and update runtimes, run native games in them through profiles and prefixes"
+keywords = ["steam", "runtime", "linux", "games", "pressure-vessel"]
+repository = "https://github.com/Gigas002/sruman"
 version = "0.1.0"
 
 [workspace.dependencies]

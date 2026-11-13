@@ -332,8 +332,8 @@ profile = "scout"                          # optional; default: default_profile
 # env = { SDL_VIDEODRIVER = "wayland" }    # merged over the profile's env
 
 [[game]]
-name = "dota-like"
-exe = "/opt/somegame/game.sh"
+name = "supertux"
+exe = "~/Games/SuperTux/run.sh"
 profile = "sniper"                         # implicit profiles work here too
 ```
 
@@ -509,9 +509,15 @@ Rules:
       _Done 2026-11-13:_ both crates renamed; the template's greet code and
       `extra` features are gone, so `libsruman` exports only `VERSION` and
       `sruman` prints it. Build, tests, clippy and fmt pass.
-- [ ] **0.2** Metadata: GPL-3.0-or-later in `[workspace.package]`, full GPL
+- [x] **0.2** Metadata: GPL-3.0-or-later in `[workspace.package]`, full GPL
       text in `LICENSE`, the `deny.toml` license allowlist, description,
       keywords, repository, and the template `TODO`s in `test.yml`/`deploy.yml`.
+      _Done 2026-11-13:_ GPL-3.0-or-later in `[workspace.package]` with the
+      GPL v3 text (same as lootrs), description, keywords, homepage and
+      repository; `deny.toml` takes lootrs' license allowlist; `deploy.yml`
+      publishes `libsruman` then `sruman`; codecov covers both crates.
+      `.typos.toml` allows `Pn` (the `-Pn` flag). `cargo deny check` and
+      `typos` pass.
 - [ ] **0.3** Short README (what, install, quick start, links). Start
       `CHANGELOG.md`.
 - [x] **0.4** **Spike.** _Done 2026-11-13:_ see "Spike results" above.
