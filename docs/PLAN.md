@@ -409,7 +409,8 @@ $XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman c
                                      /<name>/<build_id>.lock   # sruman's shared hold while a game runs
                                      /<name>/current -> <build_id>
 $XDG_DATA_HOME/sruman/prefixes/<name>/               # default prefix_root (prefix paths may be anywhere)
-$XDG_CACHE_HOME/sruman/sync/<suite>.toml             # -Sy index: channel → build, sizes, sums, manifest
+$XDG_CACHE_HOME/sruman/sync/<name>.toml              # -Sy index: timestamp, channel → build; per build: archives (sha256, size), os-release
+$XDG_CACHE_HOME/sruman/sync/manifests/<name>-<build>.manifest.dpkg   # package list of each indexed build
 $XDG_CACHE_HOME/sruman/pkg/<suite>-<build>.tar.xz    # download cache (pacman's /var/cache/pacman/pkg)
 $XDG_STATE_HOME/sruman/logs/                         # app log; games/<game>/, exec/<profile>/ run logs (lootrs runlog format)
 $XDG_RUNTIME_DIR/sruman/                             # locks: per build in use, per prefix
@@ -658,13 +659,26 @@ Rules:
       `ureq` (`UreqFetch`), so gaki can bring its own client. Tests use
       `tests/support/http.rs`, a `std::net` server that 2.6 reuses. deny.toml
       allows ISC, BSD-3-Clause and CDLA-Permissive-2.0 (all in gaki's list).
-- [ ] **2.2** `sync`: `refresh` reads `images/update-timestamp.txt` and skips
+- [x] **2.2** `sync`: `refresh` reads `images/update-timestamp.txt` and skips
       the rest when it's unchanged (unless forced). Otherwise, per catalog
       runtime and channel, it reads the pointer `.txt`, then the build's
       `SHA256SUMS`, sizes (`HEAD`), `os-release`, and `manifest.dpkg`, and
       writes `sync/<suite>.toml`. `list_builds` (for `-Sl`) parses the
       nginx autoindex of `images/` for `N.0.*` dirs, keeping the parser
       tolerant and tested on a saved page.
+      _Done 2026-11-13:_ `sync`: `refresh` per runtime (one failing doesn't
+      stop the others; the old index stays), skipping when
+      `<server_dir>/images/update-timestamp.txt` is unchanged (one request;
+      scout and scout-ldlp share steamrt1's). Builds are immutable, so known
+      ones are reused and only new builds cost `SHA256SUMS` + a `HEAD` per
+      archive + os-release + manifest. The platform files are found in
+      `SHA256SUMS` by Valve's naming (`com.valvesoftware.SteamRuntime.Platform
+      -<amd64,i386|arm64>-<suite>.*`), never the SDK ones. Index in
+      `sync/<name>.toml`, manifests in `sync/manifests/` (pruned with the
+      index). `add_build` records a pinned build;
+      `list_builds`/`parse_autoindex` are tested on the saved real `images/`
+      page. Catalog `base_url` now also accepts `http://` for localhost only
+      (local mirror, step 2.6 tests).
 - [ ] **2.3** `Progress` trait (`begin(item, total)`, `advance(n)`,
       `phase(Download|Verify|Extract|Commit)`) and `CancelFlag`.
 - [ ] **2.4** `install::Transaction`: resolve targets + `depends` (pacman

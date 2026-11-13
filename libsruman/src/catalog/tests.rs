@@ -222,3 +222,19 @@ fn current_arch_is_known_on_ci_targets() {
         assert!(Arch::current().is_some());
     }
 }
+
+#[test]
+fn plain_http_only_for_localhost() {
+    for (url, ok) in [
+        ("https://mirror.example", true),
+        ("http://127.0.0.1:8080", true),
+        ("http://localhost/steam", true),
+        ("http://[::1]:9000", true),
+        ("http://mirror.example", false),
+        ("http://127.0.0.1.evil.example", false),
+        ("http://localhost@evil.example", false),
+        ("ftp://localhost", false),
+    ] {
+        assert_eq!(base_url_allowed(url), ok, "{url}");
+    }
+}
