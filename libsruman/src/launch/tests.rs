@@ -416,33 +416,41 @@ fn wrap_is_usable_on_its_own() {
     assert_eq!(spec.env["PRESSURE_VESSEL_FILESYSTEMS_RW"], "/opt/game");
 }
 
-/// Runs a command in a real container build: the prefix home receives the
-/// writes, and the build and prefix stay locked exactly while it runs.
-/// `SRUMAN_REAL_BUILD=~/games/sruman-test/runtimes/SteamLinuxRuntime_sniper
-/// cargo test -p libsruman --lib -- --ignored real_container --nocapture`
+/// Runs a command in a real runtime: the prefix home receives the writes,
+/// and the builds and prefix stay locked exactly while it runs. Either
+/// `SRUMAN_REAL_BUILD=<extracted container build>` (linked as sniper), or
+/// `SRUMAN_REAL_STORE=<store root> SRUMAN_REAL_RUNTIME=<name>`:
+/// `cargo test -p libsruman --lib -- --ignored real_launch --nocapture`
 #[test]
-#[ignore = "needs an extracted container build in SRUMAN_REAL_BUILD"]
-fn real_container_launch() {
+#[ignore = "needs a real runtime (SRUMAN_REAL_BUILD or SRUMAN_REAL_STORE)"]
+fn real_launch() {
     use std::process::{Command, Stdio};
 
-    let real = PathBuf::from(std::env::var_os("SRUMAN_REAL_BUILD").expect("SRUMAN_REAL_BUILD"));
-    let w = World::new();
-    let lock = w.store.lock().unwrap();
-    let id: BuildId = "3.0.99".parse().unwrap();
-    let meta = BuildMeta::new(
-        "sniper",
-        &id,
-        Source::Link {
-            target: real.clone(),
-        },
-    );
-    let installed = w
-        .store
-        .link(&lock, &real, meta, MakeCurrent::Always)
-        .unwrap();
-    drop(lock);
-
-    let mut profile = Profile::new("real", "sniper=3.0.99".parse().unwrap());
+    let mut w = World::new();
+    let runtime = match std::env::var_os("SRUMAN_REAL_STORE") {
+        Some(root) => {
+            w.store = Store::open(root);
+            std::env::var("SRUMAN_REAL_RUNTIME").unwrap_or_else(|_| "sniper".into())
+        }
+        None => {
+            let real =
+                PathBuf::from(std::env::var_os("SRUMAN_REAL_BUILD").expect("SRUMAN_REAL_BUILD"));
+            let lock = w.store.lock().unwrap();
+            let id: BuildId = "3.0.99".parse().unwrap();
+            let meta = BuildMeta::new(
+                "sniper",
+                &id,
+                Source::Link {
+                    target: real.clone(),
+                },
+            );
+            w.store
+                .link(&lock, &real, meta, MakeCurrent::Always)
+                .unwrap();
+            "sniper".into()
+        }
+    };
+    let mut profile = Profile::new("real", runtime.parse().unwrap());
     profile.prefix = Some("~/prefixes/real".into());
     let extra: Vec<String> = vec![
         "-c".into(),
@@ -480,7 +488,13 @@ fn real_container_launch() {
     drop(launch);
     std::thread::sleep(std::time::Duration::from_secs(2));
     let prefix_dir = w.home.join("prefixes/real");
-    assert!(w.store.in_use(&installed), "build held by the running game");
+    for build in &plan.builds {
+        assert!(
+            w.store.in_use(build),
+            "{} held by the running game",
+            build.name
+        );
+    }
     assert!(
         prefix::in_use(&locks, &prefix_dir),
         "prefix held by the running game"
@@ -503,6 +517,174 @@ fn real_container_launch() {
         !w.home.join("marker").exists(),
         "the real home wasn't written"
     );
-    assert!(!w.store.in_use(&installed));
+    for build in &plan.builds {
+        assert!(!w.store.in_use(build), "{} released", build.name);
+    }
     assert!(!prefix::in_use(&locks, &prefix_dir));
+}
+
+impl World {
+    /// A build that only has `marker` (scout's entry point, scout-ldlp's
+    /// `run.sh`).
+    fn install_marker(&self, name: &str, build: &str, marker: &str) -> Installed {
+        let lock = self.store.lock().unwrap();
+        let staged = self.store.staging_dir(&lock, name).unwrap();
+        executable(&staged.join(marker));
+        let id: BuildId = build.parse().unwrap();
+        let meta = BuildMeta::new(name, &id, Source::Import { from: "/x".into() });
+        self.store
+            .commit(&lock, &staged, meta, MakeCurrent::IfNewer)
+            .unwrap()
+    }
+}
+
+#[test]
+fn scout_runs_through_soldier() {
+    let w = World::new();
+    let soldier = w.install("soldier", "2.0.1");
+    let scout = w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
+    let game = w.game();
+    let mut profile = profile();
+    profile.slr.runtime = "scout".parse().unwrap();
+    profile.wrappers.clear();
+    profile.shader_cache = None;
+    profile.slr.filesystems_rw.clear();
+    let plan = prepare(
+        Target::Game(&game),
+        &profile,
+        &Tag::Game("buckshot".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
+    let spec = plan.spec(&[5]);
+    assert_eq!(
+        strings(spec.argv()),
+        [
+            soldier.dir.join("run").display().to_string(),
+            "--verbose".into(),
+            "--pass-fd=5".into(),
+            "--".into(),
+            scout
+                .dir
+                .join("scout-on-soldier-entry-point-v2")
+                .display()
+                .to_string(),
+            "--".into(),
+            w.home
+                .join("Games/Buckshot/Buckshot Roulette.x86_64")
+                .display()
+                .to_string(),
+            "--fullscreen".into(),
+        ]
+    );
+    assert_eq!(
+        spec.env["PRESSURE_VESSEL_VARIABLE_DIR"],
+        soldier.dir.join("var").as_os_str()
+    );
+    let rw = spec.env["PRESSURE_VESSEL_FILESYSTEMS_RW"]
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        rw,
+        format!(
+            "{}:{}",
+            w.home.join("Games/Buckshot").display(),
+            scout.dir.display()
+        )
+    );
+    let names: Vec<&str> = plan.builds.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, ["scout", "soldier"], "both are held");
+    assert_eq!(plan.prefix.as_ref().unwrap().runtime, "scout");
+    assert_eq!(plan.prefix.as_ref().unwrap().home, HomeMode::Container);
+}
+
+#[test]
+fn scout_without_soldier_names_the_fix() {
+    let w = World::new();
+    w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
+    let profile = Profile::new("scout", "scout".parse().unwrap());
+    let err = prepare(
+        Target::Shell,
+        &profile,
+        &Tag::Session("s".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.problems,
+        ["`scout` runs inside `soldier`, which is not installed; run `sruman -S soldier`"]
+    );
+}
+
+#[test]
+fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
+    let w = World::new();
+    let ldlp = w.install_marker("scout-ldlp", "1.0.1", "run.sh");
+    let game = w.game();
+    let mut profile = profile();
+    profile.slr.runtime = "scout-ldlp".parse().unwrap();
+    profile.shader_cache = None;
+    let search = [w.bin.clone()];
+    let plan = prepare(
+        Target::Game(&game),
+        &profile,
+        &Tag::Game("buckshot".into()),
+        &w.ctx(&search, &[]),
+    )
+    .unwrap();
+    let spec = plan.spec(&[3, 4]);
+    let bin = w.bin.display().to_string();
+    assert_eq!(
+        strings(spec.argv()),
+        [
+            format!("{bin}/gamemoderun"),
+            format!("{bin}/mangohud"),
+            "--dlsym".into(),
+            ldlp.dir.join("run.sh").display().to_string(),
+            w.home
+                .join("Games/Buckshot/Buckshot Roulette.x86_64")
+                .display()
+                .to_string(),
+            "--fullscreen".into(),
+        ],
+        "no runner args, no --pass-fd"
+    );
+    let home = w.home.join("prefixes/indie/home");
+    assert_eq!(spec.env["HOME"], home.as_os_str());
+    assert_eq!(
+        spec.env["XDG_CONFIG_HOME"],
+        home.join(".config").as_os_str()
+    );
+    assert_eq!(
+        spec.env["XDG_DATA_HOME"],
+        home.join(".local/share").as_os_str()
+    );
+    assert_eq!(spec.env["XDG_CACHE_HOME"], home.join(".cache").as_os_str());
+    assert_eq!(
+        spec.env["XDG_STATE_HOME"],
+        home.join(".local/state").as_os_str()
+    );
+    assert!(
+        spec.env.keys().all(|k| !k.starts_with("PRESSURE_VESSEL")),
+        "{:?}",
+        spec.env.keys()
+    );
+    assert_eq!(spec.env["SRUMAN_GAME"], "buckshot");
+    assert_eq!(plan.prefix.as_ref().unwrap().home, HomeMode::Env);
+
+    // Without a prefix the real home stays.
+    let plain = Profile::new("p", "scout-ldlp".parse().unwrap());
+    let spec = prepare(
+        Target::Shell,
+        &plain,
+        &Tag::Session("s".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap()
+    .spec(&[]);
+    assert!(!spec.env.contains_key("HOME"));
+    assert_eq!(
+        strings(spec.argv()),
+        [ldlp.dir.join("run.sh").display().to_string(), "bash".into()]
+    );
 }

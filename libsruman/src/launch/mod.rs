@@ -138,6 +138,8 @@ pub struct NativeCommand {
 pub struct Runtimes {
     /// The profile's runtime.
     pub runtime: Installed,
+    /// The container it runs in, for scout: soldier's current build.
+    pub host: Option<Installed>,
     pub entry: Entry,
 }
 
@@ -339,15 +341,55 @@ pub fn resolve_runtimes(
         ));
         return None;
     }
-    match def.entry {
-        Entry::Container => Some(Runtimes {
-            runtime,
-            entry: def.entry,
-        }),
-        other => {
+    let host = match def.entry {
+        Entry::ScoutOnSoldier => {
+            // `depends` names the container scout runs in (soldier).
+            let Some(host_name) = def.depends.first() else {
+                problems.push(format!(
+                    "`{}` has no container runtime in `depends`",
+                    def.name
+                ));
+                return None;
+            };
+            let host_ref = RuntimeRef {
+                name: host_name.clone(),
+                build: None,
+            };
+            let host = store_resolve_for(&host_ref, &def.name, ctx.store, problems)?;
+            let run = host.dir.join(Entry::Container.marker());
+            if !is_executable(&run) {
+                problems.push(format!(
+                    "{} {} is incomplete: {} is missing; check it with `sruman -Qkk {}`",
+                    host.name,
+                    host.build,
+                    run.display(),
+                    host.name
+                ));
+                return None;
+            }
+            Some(host)
+        }
+        Entry::Container | Entry::Ldlp => None,
+    };
+    Some(Runtimes {
+        runtime,
+        host,
+        entry: def.entry,
+    })
+}
+
+/// Like [`resolve_build`] for a dependency, naming who needs it.
+fn store_resolve_for(
+    runtime: &RuntimeRef,
+    needed_by: &str,
+    store: &Store,
+    problems: &mut Vec<String>,
+) -> Option<Installed> {
+    match store.resolve(runtime) {
+        Ok(installed) => Some(installed),
+        Err(_) => {
             problems.push(format!(
-                "`{}` runtimes ({other:?}) can't be launched yet",
-                def.name
+                "`{needed_by}` runs inside `{runtime}`, which is not installed; run `sruman -S {runtime}`"
             ));
             None
         }
@@ -400,7 +442,56 @@ pub fn wrap(
     let home = ctx.home;
     let debug = ctx.debug || profile.debug;
     let build = &runtimes.runtime;
+    let prefix_plan = |mode| {
+        prefix.map(|dir| PrefixPlan {
+            dir: dir.to_path_buf(),
+            runtime: build.name.clone(),
+            build: build.build.to_string(),
+            profile: profile.name.clone(),
+            home: mode,
+        })
+    };
 
+    if runtimes.entry == Entry::Ldlp {
+        // No container: the host filesystem is all there, and the prefix
+        // home can only be offered through the environment.
+        let mut env = BTreeMap::new();
+        if let Some(prefix) = prefix {
+            let home_dir = prefix.join(prefix::HOME_DIR);
+            for (key, sub) in [
+                ("HOME", ""),
+                ("XDG_CONFIG_HOME", ".config"),
+                ("XDG_DATA_HOME", ".local/share"),
+                ("XDG_CACHE_HOME", ".cache"),
+                ("XDG_STATE_HOME", ".local/state"),
+            ] {
+                let dir = if sub.is_empty() {
+                    home_dir.clone()
+                } else {
+                    home_dir.join(sub)
+                };
+                env.insert(key.to_owned(), dir.into_os_string());
+            }
+        }
+        env.extend(native.env);
+        let mut command = vec![native.program];
+        command.extend(native.args);
+        return Ok(LaunchPlan {
+            wrappers: Vec::new(),
+            entry: vec![build.dir.join(Entry::Ldlp.marker()).into_os_string()],
+            command,
+            // Nothing in between closes fds: the holds are inherited.
+            pass_fds: false,
+            env,
+            cwd: native.cwd,
+            shader_cache: None,
+            builds: vec![runtimes.runtime.clone()],
+            prefix: prefix_plan(HomeMode::Env),
+        });
+    }
+
+    // The container: the runtime itself, or soldier for scout.
+    let container = runtimes.host.as_ref().unwrap_or(build);
     let mut rw: Vec<PathBuf> = Vec::new();
     let mut ro: Vec<PathBuf> = Vec::new();
     let program = PathBuf::from(&native.program);
@@ -410,6 +501,10 @@ pub fn wrap(
         push_unique(&mut rw, dir.to_path_buf());
     }
     push_unique(&mut rw, native.cwd.clone());
+    if runtimes.entry == Entry::ScoutOnSoldier {
+        // The scout entry point keeps its runtime copy in the scout build.
+        push_unique(&mut rw, build.dir.clone());
+    }
     for path in &slr.filesystems_rw {
         push_unique(&mut rw, paths::expand_tilde(path, home));
     }
@@ -423,7 +518,7 @@ pub fn wrap(
     let mut env = BTreeMap::new();
     env.insert(
         "PRESSURE_VESSEL_VARIABLE_DIR".to_owned(),
-        build.dir.join("var").into_os_string(),
+        container.dir.join("var").into_os_string(),
     );
     if let Some(prefix) = prefix {
         env.insert(
@@ -446,11 +541,28 @@ pub fn wrap(
         return Err(LaunchError { problems });
     }
 
-    let mut entry = vec![build.dir.join("run").into_os_string()];
+    let mut entry = vec![
+        container
+            .dir
+            .join(Entry::Container.marker())
+            .into_os_string(),
+    ];
     entry.extend(profile.runner_args.iter().map(OsString::from));
-    let mut command = vec![OsString::from("--"), native.program];
+    let mut command = vec![OsString::from("--")];
+    if runtimes.entry == Entry::ScoutOnSoldier {
+        command.push(
+            build
+                .dir
+                .join(Entry::ScoutOnSoldier.marker())
+                .into_os_string(),
+        );
+        command.push("--".into());
+    }
+    command.push(native.program);
     command.extend(native.args);
 
+    let mut builds = vec![runtimes.runtime.clone()];
+    builds.extend(runtimes.host.clone());
     Ok(LaunchPlan {
         wrappers: Vec::new(),
         entry,
@@ -459,14 +571,8 @@ pub fn wrap(
         env,
         cwd: native.cwd,
         shader_cache: None,
-        builds: vec![runtimes.runtime.clone()],
-        prefix: prefix.map(|dir| PrefixPlan {
-            dir: dir.to_path_buf(),
-            runtime: build.name.clone(),
-            build: build.build.to_string(),
-            profile: profile.name.clone(),
-            home: HomeMode::Container,
-        }),
+        builds,
+        prefix: prefix_plan(HomeMode::Container),
     })
 }
 
