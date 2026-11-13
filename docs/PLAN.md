@@ -837,9 +837,20 @@ Rules:
       one without a prefix), and are tagged `SRUMAN_SESSION`. Golden tests now
       cover each runtime kind (container, scout, scout-ldlp) × target (game,
       path, bare name, shell), with and without a prefix.
-- [ ] **3.5** `process`: list sessions by tag from `/proc`, and stop a
+- [x] **3.5** `process`: list sessions by tag from `/proc`, and stop a
       process group (TERM, then a timeout, then KILL). lootrs' approach, not
       its code.
+      _Done 2026-11-14:_ `process::list()` groups `/proc` entries by
+      `SRUMAN_GAME` or `SRUMAN_SESSION` (zombies and unreadable processes
+      skipped) and finds the leader. `stop(session, grace)` sends TERM to each
+      process group (never pgid ≤ 1 or our own group) and to every tagged pid,
+      so processes that left the group with setsid are reached too. It waits
+      up to `grace` (start times guard against reused pids), then sends KILL.
+      Tests use a fake /proc for parsing (comm with spaces and parentheses)
+      and real sh/sleep/setsid for stopping. The tests' spawn lock moved to
+      the crate-wide `test_lock`, and every lock-checking test takes it:
+      before that, the fork window caused about 1 failure in 3 runs. The suite
+      is now clean over 200 runs.
 - [ ] **3.6** `diag` (feature): `unprivileged_userns_clone`,
       `max_user_namespaces`, Ubuntu's AppArmor userns restriction, and a
       wrapper around the runtime's `steam-runtime-system-info`.
