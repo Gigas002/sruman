@@ -12,6 +12,8 @@ repository = "https://github.com/Gigas002/sruman"
 version = "0.1.0"
 
 [workspace.dependencies]
+# CLI parsing (sruman): pacman grammar through derive + counted flags
+clap = { version = "4", features = ["derive"] }
 # xz: pure Rust, with a multithreaded block decoder (Valve's archives are
 # multi-block: ~1.1 s vs ~9 s single-threaded for sniper); no C build.
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "optimization"] }
