@@ -8,14 +8,30 @@ description.workspace = true
 keywords.workspace = true
 repository.workspace = true
 
+[lib]
+name = "sruman"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sruman"
 path = "src/main.rs"
 
 [dependencies]
+clap.workspace = true
 libsruman.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, optional = true }
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [features]
-default = ["download"]
+default = ["download", "json", "diag"]
 # `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`.
 download = ["libsruman/download", "libsruman/ureq"]
+# `--json` output.
+json = ["dep:serde_json"]
+# `-D`: doctor checks.
+diag = ["libsruman/diag"]

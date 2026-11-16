@@ -442,6 +442,7 @@ auto_install = false          # missing runtime at launch: false → [Y/n] promp
 | `libsruman` | `diag`     | no      | `serde_json` (system-info's report)       | doctor checks                            |
 | `sruman`    | `download` | yes     | `libsruman/download`                       | `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`  |
 | `sruman`    | `json`     | yes     | `serde_json`                               | `--json`                                 |
+| `sruman`    | `diag`     | yes     | `libsruman/diag`                           | `-D`                                     |
 
 `serde` is not optional in `libsruman`: profiles, state files and the index
 all need it. `--no-default-features` still gives `-Q`, `-R`, `-U`, `-P`, `-X`
@@ -870,11 +871,30 @@ Rules:
 
 ### Phase 4 — the `sruman` binary
 
-- [ ] **4.1** `cli/`: the pacman grammar above (operations group, counted
+- [x] **4.1** `cli/`: the pacman grammar above (operations group, counted
       modifiers, `-p`, trailing args). `settings/`: flags + `config.toml` +
       defaults → `Settings { operation: Operation, … }`, with pacman-style
       errors for invalid modifier combinations. Table-driven parse tests for
       every row of the CLI tables.
+      _Done 2026-11-16:_ clap derive with one field per letter (a letter
+      means different things per operation, as in pacman: `-s` search/status,
+      `-k` check/kill, `-d` nodeps/delete). Operations are plain bools, not
+      an `ArgGroup`: `settings/operation` rejects two of them with pacman's
+      `only one operation may be used at a time`, then checks each modifier
+      against the operation (`invalid option '-k' for -S`), the sub-operation
+      (`invalid option '--needed' for -Ss`) and its siblings (`'-s' and '-i'
+      may not be used together`), and `--json` against the resolved one.
+      Targets use `trailing_var_arg`, so a run passes everything after its
+      target untouched; any other operation with a `-…` target is parsed
+      again without it, so `-S sniper --needed` works as in pacman. Bare
+      `sruman` is `-Syu` (without `download`: `no operation specified`);
+      `--shell` takes `-p` or `default_profile`. `config.toml` denies unknown
+      keys and adds `log_keep` and `stop_timeout_secs`; `--config` is a file
+      (relative to the cwd, must exist). `NO_COLOR` turns `auto` off; `-v`
+      mirrors the log to stderr at debug (`-vv` trace). The binary gets a lib
+      target for tests, and features `json` and `diag` (default on). 48
+      tests: the full grammar from argv, config merging, errors naming the
+      file and key.
 - [ ] **4.2** `logger/`: tracing to stderr (`-v`) and a daily file, as in
       lootrs.
 - [ ] **4.3** `output/`: the pacman look (`::`, `resolving dependencies...`,
