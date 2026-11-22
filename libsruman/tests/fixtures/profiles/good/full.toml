@@ -1,5 +1,5 @@
 name = "full"
-runner = "native"
+runner = "slr"
 prefix = "~/prefixes/full"
 runner_args = ["--verbose"]
 wrappers = ["mangohud --dlsym", "gamemoderun"]

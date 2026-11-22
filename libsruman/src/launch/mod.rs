@@ -664,7 +664,7 @@ pub fn prepare(
     let shader_cache = match (target, &profile.shader_cache) {
         (Target::Game(game), Some(ShaderCache::Dir(dir))) => {
             let dir = paths::expand_tilde(dir, home).join(&game.name);
-            for (key, value) in ShaderCache::env(&dir, Runner::Native) {
+            for (key, value) in ShaderCache::env(&dir, Runner::Slr) {
                 env.insert(key.to_owned(), value.into_os_string());
             }
             Some(dir)

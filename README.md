@@ -28,8 +28,8 @@ sruman -p scout ./game.x86_64         # native game in a Steam Linux Runtime "pr
   `sruman <path>` both work.
 - **Shared profiles.** Profiles are in the
   [libgameprofiles](https://github.com/Gigas002/libgameprofiles) format that
-  lootrs and gaki use too: a sruman profile is a `runner = "native"` profile
-  with an `[slr]` section.
+  lootrs and gaki use too: a sruman profile has `runner = "slr"` and an
+  `[slr]` section.
 - **Library first.** `libsruman` holds all the logic, so
   [lootrs](https://github.com/Gigas002/lootrs) and
   [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.

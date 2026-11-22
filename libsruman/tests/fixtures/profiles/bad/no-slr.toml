@@ -1,2 +1,2 @@
 name = "no-slr"
-runner = "native"
+runner = "slr"

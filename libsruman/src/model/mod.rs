@@ -15,8 +15,8 @@ mod profile;
 pub use game::{Game, LoadedGames, RunTarget, TargetError, load_games, resolve_target};
 pub use libgameprofiles::{Issue, Issues, Severity, Subject, validate_name};
 pub use profile::{
-    LoadedProfiles, Profile, Runner, ShaderCache, SlrSection, implicit_profile, load_dir,
-    new_profile, save_profile, slr, validate_profile,
+    LibOverride, LoadedProfiles, Profile, Runner, ShaderCache, SlrMode, SlrSection,
+    implicit_profile, load_dir, new_profile, save_profile, slr, validate_profile,
 };
 
 use crate::catalog::Catalog;

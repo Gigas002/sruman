@@ -4,7 +4,7 @@
 # defaults below (no prefix: the game sees your real home).
 
 name = "sniper"
-runner = "native"
+runner = "slr"
 # runner_args = []                         # pressure-vessel options, e.g. ["--verbose"]
 # wrappers = ["gamemoderun", "mangohud"]   # in front of everything, outside the container
 # debug = false                            # verbose runtime logging in run logs
