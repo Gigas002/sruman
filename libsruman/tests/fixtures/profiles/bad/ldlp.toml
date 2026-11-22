@@ -1,4 +1,5 @@
 name = "ldlp"
+runner = "native"
 prefix = "~/p"
 runner_args = ["--verbose"]
 

@@ -29,7 +29,10 @@ use std::{
 
 use crate::{
     catalog::{Catalog, Entry},
-    model::{Game, Issue, Issues, Profile, ShaderCache, SlrSection, Subject, ValidationContext},
+    model::{
+        self, Game, Issue, Issues, Profile, Runner, ShaderCache, SlrSection, Subject,
+        ValidationContext,
+    },
     paths,
     prefix::{self, HomeMode, PrefixContext, PrefixUse},
     store::{Installed, Store},
@@ -328,11 +331,18 @@ pub fn resolve_runtimes(
     ctx: &LaunchContext,
     problems: &mut Vec<String>,
 ) -> Option<Runtimes> {
-    let Some(def) = ctx.catalog.get(&slr.runtime.name) else {
-        problems.push(format!("unknown runtime `{}`", slr.runtime.name));
+    let wanted = match slr.runtime.parse::<RuntimeRef>() {
+        Ok(wanted) => wanted,
+        Err(e) => {
+            problems.push(format!("`slr.runtime`: {e}"));
+            return None;
+        }
+    };
+    let Some(def) = ctx.catalog.get(&wanted.name) else {
+        problems.push(format!("unknown runtime `{}`", wanted.name));
         return None;
     };
-    let runtime = resolve_build(&slr.runtime, ctx.store, problems)?;
+    let runtime = resolve_build(&wanted, ctx.store, problems)?;
     let marker = runtime.dir.join(def.entry.marker());
     if !is_executable(&marker) {
         problems.push(format!(
@@ -654,7 +664,7 @@ pub fn prepare(
     let shader_cache = match (target, &profile.shader_cache) {
         (Target::Game(game), Some(ShaderCache::Dir(dir))) => {
             let dir = paths::expand_tilde(dir, home).join(&game.name);
-            for (key, value) in ShaderCache::env(&dir) {
+            for (key, value) in ShaderCache::env(&dir, Runner::Native) {
                 env.insert(key.to_owned(), value.into_os_string());
             }
             Some(dir)
@@ -684,7 +694,12 @@ pub fn prepare(
         env,
         cwd,
     };
-    let wrapped = wrap(native, &profile.slr, profile, prefix.as_deref(), ctx);
+    let wrapped = match model::slr(profile) {
+        Ok((slr, _)) => wrap(native, slr, profile, prefix.as_deref(), ctx),
+        Err(problem) => Err(LaunchError {
+            problems: vec![problem],
+        }),
+    };
     match wrapped {
         Ok(mut plan) if problems.is_empty() => {
             if shell && plan.pass_fds {
@@ -716,20 +731,23 @@ pub fn preflight(profile: &Profile, ctx: &LaunchContext) -> Vec<Issue> {
         home: ctx.home,
         catalog: ctx.catalog,
     };
-    let mut issues = profile.validate(&validation);
+    let mut issues = model::validate_profile(profile, &validation);
     if issues.iter().any(Issue::is_error) {
         return issues;
     }
+    let Some(slr) = &profile.slr else {
+        return issues; // `validate_profile` reported it
+    };
     let mut collect = Issues::new(Subject::Profile(profile.name.clone()));
     let mut problems = Vec::new();
-    resolve_runtimes(&profile.slr, ctx, &mut problems);
+    resolve_runtimes(slr, ctx, &mut problems);
     resolve_wrappers(&profile.wrappers, ctx.search_path, &mut problems);
     for problem in problems {
         collect.error(problem);
     }
     for (field, paths) in [
-        ("slr.filesystems_rw", &profile.slr.filesystems_rw),
-        ("slr.filesystems_ro", &profile.slr.filesystems_ro),
+        ("slr.filesystems_rw", &slr.filesystems_rw),
+        ("slr.filesystems_ro", &slr.filesystems_ro),
     ] {
         for path in paths {
             let expanded = paths::expand_tilde(path, ctx.home);

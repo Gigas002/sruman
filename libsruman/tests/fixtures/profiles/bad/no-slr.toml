@@ -1,1 +1,2 @@
 name = "no-slr"
+runner = "native"

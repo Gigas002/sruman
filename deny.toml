@@ -26,3 +26,5 @@ multiple-versions = "warn"
 
 [sources]
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# libgameprofiles (the profile format) until it is published.
+allow-git = ["https://github.com/Gigas002/libgameprofiles"]

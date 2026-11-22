@@ -1,4 +1,5 @@
 name = "invalid"
+runner = "native"
 prefix = "relative/prefix"
 wrappers = [""]
 shader_cache = "cache"

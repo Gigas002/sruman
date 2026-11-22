@@ -1,6 +1,7 @@
-use std::path::Path;
-
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use super::*;
 use crate::version::RuntimeRef;
@@ -45,7 +46,10 @@ fn good_fixtures_load_and_validate() {
     );
 
     let full = &loaded.profiles["full"];
-    assert_eq!(full.slr.runtime.to_string(), "sniper=3.0.20261021.266025");
+    assert_eq!(
+        full.slr.as_ref().unwrap().runtime,
+        "sniper=3.0.20261021.266025"
+    );
     assert_eq!(full.wrappers, ["mangohud --dlsym", "gamemoderun"]);
     assert_eq!(
         full.shader_cache,
@@ -54,7 +58,7 @@ fn good_fixtures_load_and_validate() {
     assert!(full.debug);
     for profile in loaded.profiles.values() {
         assert_eq!(
-            messages(&profile.validate(&ctx(&catalog))),
+            messages(&validate_profile(profile, &ctx(&catalog))),
             Vec::<String>::new()
         );
     }
@@ -65,13 +69,7 @@ fn bad_files_are_reported_and_the_rest_load() {
     let loaded = load_dir(&fixtures("bad"));
     let text = messages(&loaded.issues);
     assert!(
-        text.iter()
-            .any(|m| m.contains("broken.toml: invalid profile")),
-        "{text:#?}"
-    );
-    assert!(
-        text.iter()
-            .any(|m| m.contains("no-slr.toml: invalid profile") && m.contains("slr")),
+        text.iter().any(|m| m.contains("broken.toml: invalid TOML")),
         "{text:#?}"
     );
     assert!(
@@ -88,7 +86,42 @@ fn bad_files_are_reported_and_the_rest_load() {
     );
     assert_eq!(
         loaded.profiles.keys().collect::<Vec<_>>(),
-        ["invalid", "ldlp"]
+        ["invalid", "ldlp", "no-slr"]
+    );
+}
+
+#[test]
+fn sruman_runs_native_profiles_with_slr() {
+    let catalog = Catalog::builtin();
+    let loaded = load_dir(&fixtures("bad"));
+    assert_eq!(
+        messages(&validate_profile(
+            &loaded.profiles["no-slr"],
+            &ctx(&catalog)
+        )),
+        [
+            "error: profile `no-slr`: `[slr]` is required: it names the Steam Linux Runtime the games run in"
+        ]
+    );
+    let mut wine = new_profile("w", &"sniper".parse().unwrap());
+    wine.runner = Runner::Wine;
+    wine.prefix = Some("/pfx".into());
+    let text = messages(&validate_profile(&wine, &ctx(&catalog)));
+    // libgameprofiles warns that wine ignores `[slr]`; sruman refuses it.
+    assert!(
+        text.contains(
+            &"error: profile `w`: runner `wine` isn't sruman's: sruman runs `native` games"
+                .to_owned()
+        ),
+        "{text:#?}"
+    );
+    let mut pinned = new_profile("p", &"sniper".parse().unwrap());
+    pinned.slr.as_mut().unwrap().runtime = "sniper=x".into();
+    let text = messages(&validate_profile(&pinned, &ctx(&catalog)));
+    assert_eq!(text.len(), 1, "{text:#?}");
+    assert!(
+        text[0].starts_with("error: profile `p`: `slr.runtime`: "),
+        "{text:#?}"
     );
 }
 
@@ -96,14 +129,18 @@ fn bad_files_are_reported_and_the_rest_load() {
 fn validation_collects_every_problem() {
     let catalog = Catalog::builtin();
     let loaded = load_dir(&fixtures("bad"));
-    let text = messages(&loaded.profiles["invalid"].validate(&ctx(&catalog)));
+    let text = messages(&validate_profile(
+        &loaded.profiles["invalid"],
+        &ctx(&catalog),
+    ));
     assert_eq!(
         text,
         [
             "error: profile `invalid`: `prefix` must be an absolute path (or start with `~`), got `relative/prefix`",
-            "error: profile `invalid`: `shader_cache` must be an absolute path (or start with `~`), got `cache`",
             "error: profile `invalid`: `wrappers` must not contain empty entries",
             "error: profile `invalid`: `env` key `` is not a valid variable name",
+            "error: profile `invalid`: `shader_cache` must be an absolute path (or start with `~`), got `cache`",
+            "error: profile `invalid`: `slr.filesystems_rw` must be an absolute path (or start with `~`), got `games`",
             "error: profile `invalid`: `slr.runtime`: unknown runtime `snipper`; known: scout, scout-ldlp, sniper, soldier, steamrt4",
         ]
     );
@@ -113,7 +150,7 @@ fn validation_collects_every_problem() {
 fn scout_ldlp_warns_about_what_it_cannot_do() {
     let catalog = Catalog::builtin();
     let loaded = load_dir(&fixtures("bad"));
-    let issues = loaded.profiles["ldlp"].validate(&ctx(&catalog));
+    let issues = validate_profile(&loaded.profiles["ldlp"], &ctx(&catalog));
     assert!(issues.iter().all(|i| !i.is_error()), "{issues:#?}");
     let text = messages(&issues).join("\n");
     assert!(
@@ -125,28 +162,11 @@ fn scout_ldlp_warns_about_what_it_cannot_do() {
 }
 
 #[test]
-fn slr_section_validates_on_its_own() {
-    let catalog = Catalog::builtin();
-    let section = SlrSection::new("nope".parse().unwrap());
-    let issues = section.validate(
-        Subject::Profile("lootrs-native".into()),
-        false,
-        &ctx(&catalog),
-    );
-    assert_eq!(issues.len(), 1);
-    assert!(
-        issues[0]
-            .to_string()
-            .starts_with("error: profile `lootrs-native`: `slr.runtime`: unknown runtime `nope`")
-    );
-}
-
-#[test]
 fn implicit_profiles_fill_in_for_catalog_runtimes() {
     let catalog = Catalog::builtin();
     let loaded = load_dir(&fixtures("good"));
     let sniper = loaded.get("sniper", &catalog).unwrap();
-    assert_eq!(sniper, Profile::new("sniper", "sniper".parse().unwrap()));
+    assert_eq!(sniper, new_profile("sniper", &"sniper".parse().unwrap()));
     assert_eq!(sniper.prefix, None);
     assert!(loaded.get("full", &catalog).unwrap().debug);
     assert!(loaded.get("nothing", &catalog).is_none());
@@ -154,10 +174,15 @@ fn implicit_profiles_fill_in_for_catalog_runtimes() {
     let mut shadowing = loaded.clone();
     shadowing.profiles.insert(
         "soldier".into(),
-        Profile::new("soldier", "sniper".parse().unwrap()),
+        new_profile("soldier", &"sniper".parse().unwrap()),
     );
     assert_eq!(
-        shadowing.get("soldier", &catalog).unwrap().slr.runtime.name,
+        shadowing
+            .get("soldier", &catalog)
+            .unwrap()
+            .slr
+            .unwrap()
+            .runtime,
         "sniper"
     );
     assert_eq!(
@@ -169,10 +194,15 @@ fn implicit_profiles_fill_in_for_catalog_runtimes() {
 #[test]
 fn save_round_trips_and_is_atomic() {
     let tmp = tempfile::tempdir().unwrap();
-    let mut profile = Profile::new("mine", RuntimeRef::new("sniper", None).unwrap());
+    let mut profile = new_profile("mine", &RuntimeRef::new("sniper", None).unwrap());
     profile.prefix = Some("~/p".into());
     profile.env.insert("A".into(), "1".into());
-    profile.slr.filesystems_rw.push("~/Games".into());
+    profile
+        .slr
+        .as_mut()
+        .unwrap()
+        .filesystems_rw
+        .push("~/Games".into());
 
     let path = save_profile(tmp.path(), &profile).unwrap();
     assert_eq!(path, tmp.path().join("mine.toml"));
@@ -185,7 +215,7 @@ fn save_round_trips_and_is_atomic() {
         "no temp file left"
     );
 
-    let bad = Profile::new("../x", RuntimeRef::new("sniper", None).unwrap());
+    let bad = new_profile("../x", &RuntimeRef::new("sniper", None).unwrap());
     assert!(matches!(
         save_profile(tmp.path(), &bad),
         Err(ModelError::InvalidName(_))
@@ -202,7 +232,7 @@ fn missing_directory_is_empty() {
 fn shader_cache_forms() {
     assert_eq!(ShaderCache::parse(" OFF "), ShaderCache::Off);
     assert_eq!(ShaderCache::parse("~/c").as_text(), "~/c");
-    let vars: Vec<&str> = ShaderCache::env(Path::new("/c"))
+    let vars: Vec<&str> = ShaderCache::env(Path::new("/c"), Runner::Native)
         .iter()
         .map(|(k, _)| *k)
         .collect();
@@ -403,15 +433,16 @@ fn targets_resolve_like_a_shell() {
 fn prefix_may_not_swallow_the_home() {
     let catalog = Catalog::builtin();
     for prefix in ["~", "/home", "/"] {
-        let mut profile = Profile::new("p", "sniper".parse().unwrap());
+        let mut profile = new_profile("p", &"sniper".parse().unwrap());
         profile.prefix = Some(prefix.into());
-        let text = messages(&profile.validate(&ctx(&catalog)));
+        let text = messages(&validate_profile(&profile, &ctx(&catalog)));
         assert!(
-            text.iter().any(|m| m.contains("is or contains your home")),
+            text.iter()
+                .any(|m| m.contains("is or contains the home directory")),
             "{prefix}: {text:#?}"
         );
     }
-    let mut profile = Profile::new("p", "sniper".parse().unwrap());
+    let mut profile = new_profile("p", &"sniper".parse().unwrap());
     profile.prefix = Some("~/prefixes/p".into());
-    assert!(profile.validate(&ctx(&catalog)).is_empty());
+    assert!(validate_profile(&profile, &ctx(&catalog)).is_empty());
 }
