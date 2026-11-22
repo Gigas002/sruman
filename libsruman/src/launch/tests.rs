@@ -61,8 +61,23 @@ impl World {
         world
     }
 
+    /// The store lock. A child another test forks while this test has it
+    /// open keeps it locked until the child's exec, so a busy lock is
+    /// retried for a moment.
+    fn lock(&self) -> crate::store::StoreLock {
+        for _ in 0..200 {
+            match self.store.lock() {
+                Err(crate::store::StoreError::Busy(_)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                other => return other.unwrap(),
+            }
+        }
+        panic!("the store lock stayed busy");
+    }
+
     fn install(&self, name: &str, build: &str) -> Installed {
-        let lock = self.store.lock().unwrap();
+        let lock = self.lock();
         let staged = self.store.staging_dir(&lock, name).unwrap();
         crate::store::tests::fake_container(&staged, name, build);
         let id: BuildId = build.parse().unwrap();
@@ -459,10 +474,11 @@ fn wrap_is_usable_on_its_own() {
 #[test]
 #[ignore = "needs a real runtime (SRUMAN_REAL_BUILD or SRUMAN_REAL_STORE)"]
 fn real_launch() {
-    let _spawn = crate::test_lock::spawns();
     use std::process::{Command, Stdio};
 
+    // Before `spawns()`: `World::new` takes `checks()`.
     let mut w = World::new();
+    let _spawn = crate::test_lock::spawns();
     let runtime = match std::env::var_os("SRUMAN_REAL_STORE") {
         Some(root) => {
             w.store = Store::open(root);
@@ -573,7 +589,7 @@ fn real_launch() {
 impl World {
     /// A build that only has `marker` (scout's entry point).
     fn install_marker(&self, name: &str, build: &str, marker: &str) -> Installed {
-        let lock = self.store.lock().unwrap();
+        let lock = self.lock();
         let staged = self.store.staging_dir(&lock, name).unwrap();
         executable(&staged.join(marker));
         let id: BuildId = build.parse().unwrap();
@@ -697,6 +713,7 @@ fn overlay_profile() -> Profile {
 
 #[test]
 fn overlay_runs_on_the_host_with_the_runtimes_newer_libraries_first() {
+    let _spawn = crate::test_lock::checks();
     let w = World::new();
     w.sniper_libs();
     let game = w.game();
@@ -776,7 +793,7 @@ fn overlay_runs_on_the_host_with_the_runtimes_newer_libraries_first() {
     drop(launch);
 
     // Removing the build removes its overlays.
-    let lock = w.store.lock().unwrap();
+    let lock = w.lock();
     w.store.remove(&lock, &build, false).unwrap();
     assert!(!w.store.overlay_dir(&build).exists());
 }

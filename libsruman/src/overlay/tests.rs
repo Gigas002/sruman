@@ -493,6 +493,8 @@ fn glibc_versions_are_compared_by_version_nodes() {
 
 #[test]
 fn the_real_host_library_list_parses() {
+    // A spawn: other tests' locks must not leak into the child (test_lock).
+    let _spawn = crate::test_lock::spawns();
     // Every Linux host with glibc has ldconfig; skip quietly where not.
     let Ok(host) = HostLibs::system() else {
         return;
@@ -507,6 +509,7 @@ fn the_real_host_library_list_parses() {
 #[test]
 #[ignore = "needs Steam's SteamLinuxRuntime_4 and SteamLinuxRuntime, a GPU and a display"]
 fn real_runtimes_keep_the_host_gpu_stack_working() {
+    let _spawn = crate::test_lock::spawns();
     let home = std::env::var_os("HOME").unwrap();
     let common = Path::new(&home).join(".local/share/Steam/steamapps/common");
     let host = HostLibs::system().unwrap();
