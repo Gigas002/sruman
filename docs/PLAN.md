@@ -196,7 +196,7 @@ verified the ones that depended on runtime behavior.
 
 | #   | Question | Default |
 | --- | -------- | ------- |
-| D1  | **Where does the profile model live?** A: in `libsruman`, with lootrs depending on it. B: in `liblootrs`, with sruman depending on it. | **Settled: A, with lootrs' shape.** With both GPL, B no longer has a license cost, but it would still pull lootrs' wine/umu/proton model (`dxvk`, `dll_overrides`, `[umu]`…) into a tool that only runs native games, and every sruman release would wait on lootrs. So `libsruman::model::Profile` copies lootrs' generic fields by name and meaning (`name`, `prefix`, `runner_args`, `wrappers`, `debug`, `env`, `shader_cache`) and adds an `[slr]` section (`SlrSection`: runtime + container knobs). A sruman profile is then exactly a lootrs `native` profile plus `[slr]`. Later, lootrs only needs `slr: Option<libsruman::model::SlrSection>` on its `Profile` for one profile file to work in both tools. The dependency only goes downward: `liblootrs` → `libsruman`, never the reverse. **Revised 2026-11-22: C.** The model lives in neither tool: [libgameprofiles](https://github.com/Gigas002/libgameprofiles) holds the whole format (every runner's fields, `[slr]` with `runtime` as a string), its file checks and the profile loader, and lootrs, gaki and sruman depend on it. A sruman profile is a `native` profile with `[slr]` (`runner = "native"` is now required in the file); sruman parses `slr.runtime` into a `RuntimeRef` and checks it against the catalog. |
+| D1  | **Where does the profile model live?** A: in `libsruman`, with lootrs depending on it. B: in `liblootrs`, with sruman depending on it. | **Settled: A, with lootrs' shape.** With both GPL, B no longer has a license cost, but it would still pull lootrs' wine/umu/proton model (`dxvk`, `dll_overrides`, `[umu]`…) into a tool that only runs native games, and every sruman release would wait on lootrs. So `libsruman::model::Profile` copies lootrs' generic fields by name and meaning (`name`, `prefix`, `runner_args`, `wrappers`, `debug`, `env`, `shader_cache`) and adds an `[slr]` section (`SlrSection`: runtime + container knobs). A sruman profile is then exactly a lootrs `native` profile plus `[slr]`. Later, lootrs only needs `slr: Option<libsruman::model::SlrSection>` on its `Profile` for one profile file to work in both tools. The dependency only goes downward: `liblootrs` → `libsruman`, never the reverse. **Revised 2026-11-22: C.** The model lives in neither tool: [libgameprofiles](https://github.com/Gigas002/libgameprofiles) holds the whole format (every runner's fields, `[slr]` with `runtime` as a string), its file checks and the profile loader, and lootrs, gaki and sruman depend on it. A sruman profile is a `native` profile with `[slr]` (`runner = "native"` is now required in the file); since D13 it is `runner = "slr"` with `[slr]`. sruman parses `slr.runtime` into a `RuntimeRef` and checks it against the catalog. |
 | D2  | **Sync or async library?** lootrs is sync, gaki is tokio. | **Settled: sync.** Long operations take a `Progress` trait and a `CancelFlag`. HTTP goes through a `Fetch` trait, with a default `ureq` impl behind `download`, so gaki can plug in its own `reqwest` client (proxy and all) and call installs via `spawn_blocking`. |
 | D3  | **License.** | **Settled: GPL-3.0-or-later** for both crates (fill `LICENSE`, workspace `license`, `deny.toml`). |
 | D4  | **Versions and pin syntax.** | **Settled: Valve's build id** (`3.0.20261021.266025`) is the version, so pacman's `name=version` syntax works: `sruman -S sniper=3.0.20261021.266025`, or `runtime = "sniper=3.0.…"` in a profile. A bare `sniper` follows the newest installed build (per-suite `current` symlink). Build ids compare numerically, part by part. |
@@ -305,7 +305,7 @@ sees clap types.
 
 ```toml
 name = "scout"                                   # must equal the file stem
-runner = "slr"                                   # D13; until step 3b.1: "native"
+runner = "slr"                                   # D13
 prefix = "~/.local/share/sruman/prefixes/indie"  # optional; shared by any profile that names it
 # runner_args = []                               # passed to the runtime entry point
 # wrappers = ["gamemoderun", "mangohud"]         # outside the container, like Steam's %command%
@@ -330,8 +330,9 @@ runtime = "scout"                                # or "scout=1.0.20261021.266054
   stem is the name, names are validated (`[A-Za-z0-9._-]+`), validation
   collects every `Issue` instead of failing fast, and unknown or misplaced
   fields warn instead of failing. sruman adds its own checks
-  (`model::validate_profile`): the `slr` runner (`native` + `[slr]` until
-  step 3b.1), a required `[slr]`, and a runtime the catalog knows.
+  (`model::validate_profile`): the `slr` runner, a required `[slr]`, a mode
+  sruman supports (`container` until Phase 3b), and a runtime the catalog
+  knows.
 - **Implicit profiles:** every catalog runtime name (`sniper`, `scout`, …)
   works as a profile with defaults and no prefix, so
   `sruman execute -p sniper ./game` works without any file. A real file with the same name overrides it.
@@ -911,12 +912,14 @@ Needs libgameprofiles' `slr` runner, `[slr] mode` and `[slr.lib_overrides]`
 first (in that repo: keys, file checks, examples). Library work, so it comes
 before the binary, and Phase 4's commands get modes for free.
 
-- [ ] **3b.1** Adopt the new format: `model::slr` accepts `runner = "slr"`
+- [x] **3b.1** Adopt the new format: `model::slr` accepts `runner = "slr"`
       (and refuses `native` + `[slr]` with a hint to change the runner),
       implicit profiles and `new_profile` use it, fixtures and
-      `examples/profiles` are updated. The `ldlp` warnings in
-      `validate_profile` that libgameprofiles now gives for `mode = "overlay"`
-      are removed here.
+      `examples/profiles` are updated.
+      _Done 2026-11-22:_ also refuses `mode = "overlay"` ("isn't supported
+      yet", pointing at `scout-ldlp`) until 3b.3, and doesn't repeat
+      libgameprofiles' error for a missing `[slr]`. `model` re-exports
+      `SlrMode` and `LibOverride`.
 - [ ] **3b.2** Overlay library folders. `LD_LIBRARY_PATH` works per
       directory, so sruman builds, per build and set of overrides, a folder
       of symlinks to the runtime's libraries (64- and 32-bit), leaving out
@@ -935,7 +938,9 @@ before the binary, and Phase 4's commands get modes for free.
       LD_LIBRARY_PATH runtime the scout archive already bundles (its
       `run.sh`), so no second download. `scout-ldlp` stays a catalog alias
       for one release, with a deprecation warning. Decide whether `depends`
-      (scout → soldier) applies only to container mode.
+      (scout → soldier) applies only to container mode. The `ldlp` warnings
+      in `validate_profile` go: libgameprofiles gives them for
+      `mode = "overlay"`.
 - [ ] **3b.5** `[slr.lib_overrides]` (D14): per-soname `runtime`, `host` or
       `newest` over the defaults; `runtime` for a glibc or driver library is
       an error in `validate_profile`. `doctor` and `profiles show` print

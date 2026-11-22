@@ -1,17 +1,17 @@
 //! Profiles: `profiles/<name>.toml`, in the libgameprofiles format shared
 //! with lootrs and gaki.
 //!
-//! A sruman profile is a `native` profile with an `[slr]` section: the
-//! runtime and what its container sees. libgameprofiles checks the file
-//! itself; [`validate_profile`] adds what a sruman launch needs: the runner,
-//! the section, and a runtime the catalog knows.
+//! A sruman profile has `runner = "slr"` and an `[slr]` section: the runtime
+//! and what its container sees. libgameprofiles checks the file itself;
+//! [`validate_profile`] adds what a sruman launch needs: the runner, a mode
+//! sruman supports, and a runtime the catalog knows.
 
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
-pub use libgameprofiles::{Profile, Runner, ShaderCache, SlrSection, store};
+pub use libgameprofiles::{LibOverride, Profile, Runner, ShaderCache, SlrMode, SlrSection, store};
 
 use super::{Issue, Issues, ModelError, Subject, ValidationContext};
 use crate::{
@@ -22,17 +22,26 @@ use crate::{
 /// The `[slr]` section of a profile sruman can run, and its parsed runtime,
 /// or why it can't run it.
 pub fn slr(profile: &Profile) -> Result<(&SlrSection, RuntimeRef), String> {
-    if profile.runner != Runner::Native {
-        return Err(format!(
-            "runner `{}` isn't sruman's: sruman runs `native` games",
-            profile.runner
-        ));
+    match profile.runner {
+        Runner::Slr => {}
+        // The format before `slr` became a runner.
+        Runner::Native if profile.slr.is_some() => {
+            return Err(
+                "runner `native` doesn't use `[slr]`: set `runner = \"slr\"` for sruman".to_owned(),
+            );
+        }
+        runner => {
+            return Err(format!(
+                "runner `{runner}` isn't sruman's: sruman runs `slr` profiles"
+            ));
+        }
     }
     let Some(slr) = &profile.slr else {
-        return Err(
-            "`[slr]` is required: it names the Steam Linux Runtime the games run in".to_owned(),
-        );
+        return Err(MISSING_SLR.to_owned());
     };
+    if slr.mode == SlrMode::Overlay {
+        return Err(OVERLAY_UNSUPPORTED.to_owned());
+    }
     let runtime = slr
         .runtime
         .parse::<RuntimeRef>()
@@ -40,11 +49,18 @@ pub fn slr(profile: &Profile) -> Result<(&SlrSection, RuntimeRef), String> {
     Ok((slr, runtime))
 }
 
+/// libgameprofiles' own error for an `slr` profile without `[slr]`.
+const MISSING_SLR: &str = "`[slr]` is required for runner `slr`: it names the runtime";
+
+/// Overlay mode needs PLAN steps 3b.2–3b.3.
+const OVERLAY_UNSUPPORTED: &str = "`slr.mode = \"overlay\"` isn't supported yet; for scout \
+     without a container, use the `scout-ldlp` runtime";
+
 /// A `native` profile running in `runtime`, with nothing else set.
 pub fn new_profile(name: impl Into<String>, runtime: &RuntimeRef) -> Profile {
     Profile {
         slr: Some(SlrSection::new(runtime.to_string())),
-        ..Profile::new(name, Runner::Native)
+        ..Profile::new(name, Runner::Slr)
     }
 }
 
@@ -56,6 +72,8 @@ pub fn validate_profile(profile: &Profile, ctx: &ValidationContext) -> Vec<Issue
     issues.extend(profile.validate(ctx.home));
     match slr(profile) {
         Ok((slr, runtime)) => check_slr(slr, &runtime, profile, ctx.catalog, &mut issues),
+        // libgameprofiles has already reported it.
+        Err(message) if message == MISSING_SLR => {}
         Err(message) => issues.error(message),
     }
     issues.finish()

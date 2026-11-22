@@ -1,5 +1,5 @@
 name = "invalid"
-runner = "native"
+runner = "slr"
 prefix = "relative/prefix"
 wrappers = [""]
 shader_cache = "cache"

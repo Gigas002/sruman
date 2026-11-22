@@ -1,5 +1,5 @@
 name = "ldlp"
-runner = "native"
+runner = "slr"
 prefix = "~/p"
 runner_args = ["--verbose"]
 

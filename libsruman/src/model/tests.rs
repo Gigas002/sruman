@@ -91,33 +91,50 @@ fn bad_files_are_reported_and_the_rest_load() {
 }
 
 #[test]
-fn sruman_runs_native_profiles_with_slr() {
+fn sruman_runs_slr_profiles() {
     let catalog = Catalog::builtin();
+    let check = |profile: &Profile| messages(&validate_profile(profile, &ctx(&catalog)));
     let loaded = load_dir(&fixtures("bad"));
+    // libgameprofiles reports the missing section; sruman doesn't repeat it.
     assert_eq!(
-        messages(&validate_profile(
-            &loaded.profiles["no-slr"],
-            &ctx(&catalog)
-        )),
-        [
-            "error: profile `no-slr`: `[slr]` is required: it names the Steam Linux Runtime the games run in"
-        ]
+        check(&loaded.profiles["no-slr"]),
+        ["error: profile `no-slr`: `[slr]` is required for runner `slr`: it names the runtime"]
     );
-    let mut wine = new_profile("w", &"sniper".parse().unwrap());
-    wine.runner = Runner::Wine;
-    wine.prefix = Some("/pfx".into());
-    let text = messages(&validate_profile(&wine, &ctx(&catalog)));
+
+    let mut other = new_profile("w", &"sniper".parse().unwrap());
+    other.runner = Runner::Wine;
+    other.prefix = Some("/pfx".into());
+    let text = check(&other);
     // libgameprofiles warns that wine ignores `[slr]`; sruman refuses it.
     assert!(
         text.contains(
-            &"error: profile `w`: runner `wine` isn't sruman's: sruman runs `native` games"
+            &"error: profile `w`: runner `wine` isn't sruman's: sruman runs `slr` profiles"
                 .to_owned()
         ),
         "{text:#?}"
     );
+
+    // The format before `slr` was a runner gets a hint.
+    other.runner = Runner::Native;
+    let text = check(&other);
+    assert!(
+        text.contains(&"error: profile `w`: runner `native` doesn't use `[slr]`: set `runner = \"slr\"` for sruman".to_owned()),
+        "{text:#?}"
+    );
+
+    let mut overlay = new_profile("o", &"sniper".parse().unwrap());
+    overlay.slr.as_mut().unwrap().mode = SlrMode::Overlay;
+    assert_eq!(
+        check(&overlay),
+        [
+            "error: profile `o`: `slr.mode = \"overlay\"` isn't supported yet; for scout without a \
+          container, use the `scout-ldlp` runtime"
+        ]
+    );
+
     let mut pinned = new_profile("p", &"sniper".parse().unwrap());
     pinned.slr.as_mut().unwrap().runtime = "sniper=x".into();
-    let text = messages(&validate_profile(&pinned, &ctx(&catalog)));
+    let text = check(&pinned);
     assert_eq!(text.len(), 1, "{text:#?}");
     assert!(
         text[0].starts_with("error: profile `p`: `slr.runtime`: "),

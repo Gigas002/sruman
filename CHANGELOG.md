@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - Profiles use the [libgameprofiles](https://github.com/Gigas002/libgameprofiles)
   format and loader, shared with lootrs and gaki, instead of sruman's own
-  copy: a profile file now needs `runner = "native"` next to its `[slr]`
-  section. `model::validate_profile` replaces `Profile::validate`, and
+  copy: a profile file now needs `runner = "slr"` next to its `[slr]`
+  section (`mode = "overlay"` isn't supported yet). `model::validate_profile` replaces `Profile::validate`, and
   `model::new_profile` builds a profile for a runtime. A bad `slr.runtime` is
   a validation error instead of a load error.
 

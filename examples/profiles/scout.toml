@@ -3,7 +3,7 @@
 # scout, which runs inside a soldier container: `sruman -S scout` installs both.
 
 name = "scout"
-runner = "native"
+runner = "slr"
 prefix = "~/.local/share/sruman/prefixes/scout"   # saves and configs go to <prefix>/home
 
 [slr]

@@ -2,7 +2,7 @@
 # Here a sniper and a soldier profile use ~/.local/share/sruman/prefixes/indie.
 
 name = "shared-prefix-a"
-runner = "native"
+runner = "slr"
 prefix = "~/.local/share/sruman/prefixes/indie"
 wrappers = ["gamemoderun"]
 

@@ -1,5 +1,5 @@
 name = "minimal"
-runner = "native"
+runner = "slr"
 
 [slr]
 runtime = "soldier"
