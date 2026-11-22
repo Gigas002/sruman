@@ -430,6 +430,8 @@ fn json_only_where_the_plan_lists_it() {
         &["show", "hk"],
         &["profiles", "list"],
         &["profiles", "show", "p"],
+        &["provide-umu", "sniper"],
+        &["provide-umu", "--appid", "1628350"],
     ];
     #[cfg(feature = "download")]
     with_json.extend([&["builds", "sniper"][..], &["outdated"]]);
@@ -484,4 +486,29 @@ fn global_options_go_anywhere() {
 fn the_definition_is_consistent() {
     use clap::CommandFactory;
     Cli::command().debug_assert();
+}
+
+#[test]
+fn provide_umu_takes_a_runtime_or_an_app_id() {
+    assert_eq!(
+        cmd(&["provide-umu", "sniper=3.0.1"]).0,
+        Cmd::ProvideUmu {
+            runtime: Some("sniper=3.0.1".parse().unwrap()),
+            app_id: None,
+        }
+    );
+    assert_eq!(
+        cmd(&["provide-umu", "--appid", "4183110"]).0,
+        Cmd::ProvideUmu {
+            runtime: None,
+            app_id: Some(4_183_110),
+        }
+    );
+    for args in [
+        &["provide-umu"][..],
+        &["provide-umu", "sniper", "--appid", "1"],
+        &["provide-umu", "--appid", "x"],
+    ] {
+        assert!(parse(args).is_err(), "{args:?}");
+    }
 }

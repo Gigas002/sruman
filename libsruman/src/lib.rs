@@ -23,6 +23,7 @@ pub mod progress;
 pub mod store;
 #[cfg(feature = "download")]
 pub mod sync;
+pub mod umu;
 pub mod version;
 
 #[cfg(test)]

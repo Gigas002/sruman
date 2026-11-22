@@ -85,6 +85,7 @@ impl Sruman {
         let dir = self.root().join("SteamLinuxRuntime_4");
         fs::create_dir_all(dir.join("steamrt4_platform_4.0.1/files")).unwrap();
         fs::write(dir.join("VERSIONS.txt"), "#Name\tVersion\ndepot\t4.0.1\n").unwrap();
+        fs::write(dir.join("_v2-entry-point"), "#!/bin/sh\n").unwrap();
         script(
             &dir.join("run"),
             r#"{ printf 'argv:'; for a in "$@"; do printf ' [%s]' "$a"; done; echo
@@ -393,6 +394,43 @@ fn execute_in_overlay_mode() {
     // Removing a linked build only unregisters it.
     expect(&s.run(&["-y", "remove", "--force", "steamrt4"]), 0);
     assert!(runtime.join("run").is_file());
+}
+
+#[test]
+fn provide_umu_builds_the_view() {
+    let s = Sruman::new();
+    let (_, err) = expect(&s.run(&["provide-umu", "--appid", "4183110"]), 2);
+    assert!(err.contains("sruman install steamrt4"), "{err}");
+    let runtime = s.fake_runtime();
+    expect(&s.run(&["import", "--link", runtime.to_str().unwrap()]), 0);
+
+    let (out, _) = expect(&s.run(&["provide-umu", "--appid", "4183110"]), 0);
+    let folders = s.root().join("data/sruman");
+    assert_eq!(
+        out,
+        format!(
+            "steamrt4 4.0.1 for umu: provided\nUMU_FOLDERS_PATH={}\nhold: {}\n",
+            folders.display(),
+            folders.join("runtimes/steamrt4/4.0.1.lock").display()
+        )
+    );
+    let view = folders.join("umu/steamrt4");
+    assert_eq!(
+        fs::read_to_string(view.join(".installed.ok")).unwrap(),
+        "ok\n"
+    );
+    assert_eq!(
+        fs::read_link(view.join("umu")).unwrap(),
+        Path::new("_v2-entry-point")
+    );
+    assert!(view.join("run").is_file());
+    let (out, _) = expect(&s.run(&["provide-umu", "steamrt4"]), 0);
+    assert!(
+        out.starts_with("steamrt4 4.0.1 for umu: up to date\n"),
+        "{out}"
+    );
+    let (_, err) = expect(&s.run(&["provide-umu", "scout"]), 2);
+    assert!(err.contains("umu has no folder for scout"), "{err}");
 }
 
 #[cfg(feature = "download")]

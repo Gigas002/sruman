@@ -1096,7 +1096,7 @@ before the binary, and Phase 4's commands get modes for free.
       _Done 2026-11-22:_ six tests in private XDG dirs (the HTTP one needs
       `download`); the fixture server and image builder are included from
       `libsruman/tests/support` by `#[path]`.
-- [ ] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
+- [x] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
       of their runtime (soldier 1391110, sniper 1628350, steamrt4 4183110)
       for `--appid`. The view is built under the store lock in `.staging`
       and renamed into place; a view whose build is held is left alone.
@@ -1107,6 +1107,27 @@ before the binary, and Phase 4's commands get modes for free.
       offline. If pressure-vessel refuses the view,
       fall back to a hardlinked copy on the same filesystem. Tests with a fake
       build: layout, marker, repointing after an upgrade, held builds kept.
+      _Done 2026-11-22:_ `libsruman::umu` (`Folders::provide`), catalog
+      `app_id`, `Store::hold_file`. The view is staged next to it in
+      `umu/` (it must be on the view's filesystem, not the store's
+      `.staging`) and swapped in with `renameat2(RENAME_EXCHANGE)`, so
+      `umu/<variant>` stays a real directory, as umu makes it. The store
+      lock is taken only to change a view; an up-to-date view needs none,
+      so launches don't wait on installs. `--json` also gives `runtime`,
+      `dir` and `kept`. Checked with umu 1.4.4 and dwproton
+      (`require_tool_appid` 4183110), online and offline (an unreachable
+      proxy): umu takes the view as installed, skips updates, downloads
+      nothing, writes only `umu/umu-shim` beside it, and starts
+      pressure-vessel from the real build; no fallback copy was needed.
+      The game itself couldn't be checked from the test shell, where wine
+      doesn't start even on the host (`could not load kernel32.dll`), with
+      umu's own folder alike; a launch from a desktop session is left to
+      check. (pressure-vessel warns that it won't share a Proton under
+      `/usr` through `STEAM_COMPAT_MOUNTS`; whether that matters wasn't
+      settled.) A
+      small window remains between `provide-umu` returning and lootrs
+      taking the hold; lootrs should check the view's build once it holds
+      it.
 
 ### Phase 5 — docs, audit and release
 

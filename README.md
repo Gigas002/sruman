@@ -10,8 +10,8 @@ wine game.exe                         # Windows game in a wine prefix
 sruman execute -p scout ./game.x86_64 # native game in a Steam Linux Runtime "prefix"
 ```
 
-> **Status: early development.** The commands below work; `provide-umu`
-> and custom runtimes are still to come. The design is in
+> **Status: early development.** The commands below work; custom runtimes
+> are still to come. The design is in
 > [`docs/PLAN.md`](docs/PLAN.md).
 
 ## What it does
@@ -55,6 +55,7 @@ sruman run hollow-knight --wait           # run in the foreground, with its outp
 sruman logs hollow-knight                 # the latest run log
 sruman status / stop hollow-knight        # running games / stop one
 sruman shell -p scout                     # a shell in the profile's runtime and prefix
+sruman provide-umu --appid 4183110        # hand steamrt4 to umu (UMU_FOLDERS_PATH, no umu downloads)
 sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```
 

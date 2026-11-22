@@ -108,6 +108,11 @@ pub enum Command {
     /// `doctor [rt…]`, for the named runtimes or every installed one.
     #[cfg(feature = "diag")]
     Doctor { runtimes: Vec<RuntimeRef> },
+    /// `provide-umu <rt>[=build] | --appid <id>`; exactly one is set.
+    ProvideUmu {
+        runtime: Option<RuntimeRef>,
+        app_id: Option<u32>,
+    },
 }
 
 /// `run <game>`.
@@ -241,6 +246,7 @@ impl Command {
             },
             #[cfg(feature = "diag")]
             Self::Doctor { .. } => "doctor",
+            Self::ProvideUmu { .. } => "provide-umu",
         }
     }
 

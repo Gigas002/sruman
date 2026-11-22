@@ -73,6 +73,8 @@ pub struct AppDirs {
     pub runtimes: PathBuf,
     /// Suggested root for new prefixes; a prefix may live anywhere.
     pub prefixes: PathBuf,
+    /// `UMU_FOLDERS_PATH` for runtimes handed to umu (`umu/<variant>/`).
+    pub umu_folders: PathBuf,
     /// The sync index (`sync`).
     pub sync_cache: PathBuf,
     /// Downloaded archives.
@@ -96,6 +98,7 @@ impl AppDirs {
             config,
             runtimes: data.join("runtimes"),
             prefixes: data.join("prefixes"),
+            umu_folders: data.clone(),
             sync_cache: cache.join("sync"),
             pkg_cache: cache.join("pkg"),
             logs: state.join("logs"),

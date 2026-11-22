@@ -225,6 +225,13 @@ fn refuse_running(game: &str) -> Result<(), AppError> {
 /// `auto_install`; otherwise exit 2 naming the command.
 pub fn ensure_runtime(app: &mut App, profile: &Profile) -> Result<(), AppError> {
     let missing = missing_runtimes(app, profile)?;
+    install_missing(app, &missing, &format!("profile `{}`", profile.name))
+}
+
+/// D12 for `missing` runtimes that `who` needs: install them after a
+/// prompt or with `auto_install`, else exit 2 naming the command.
+#[cfg_attr(not(feature = "download"), allow(unused_variables))]
+pub fn install_missing(app: &mut App, missing: &[RuntimeRef], who: &str) -> Result<(), AppError> {
     if missing.is_empty() {
         return Ok(());
     }
@@ -242,13 +249,12 @@ pub fn ensure_runtime(app: &mut App, profile: &Profile) -> Result<(), AppError> 
                     .confirm(&format!("{names}: not installed. Install it now?"), true)?);
         if install {
             let fetch = libsruman::fetch::UreqFetch::new();
-            super::commands::runtimes::install_with(app, &fetch, &missing, true, false, false)?;
+            super::commands::runtimes::install_with(app, &fetch, missing, true, false, false)?;
             return Ok(());
         }
     }
     Err(AppError::Invalid(format!(
-        "profile `{}` needs {names}, which is not installed; install it with `sruman install {names}`",
-        profile.name
+        "{who} needs {names}, which is not installed; install it with `sruman install {names}`"
     )))
 }
 

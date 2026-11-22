@@ -489,6 +489,12 @@ impl Store {
             .join(build.build.to_string())
     }
 
+    /// The file [`Store::hold`] locks shared: other launchers (lootrs before
+    /// a umu launch) take the same `flock` to keep the build installed.
+    pub fn hold_file(&self, build: &Installed) -> PathBuf {
+        self.hold_path(&build.name, &build.build)
+    }
+
     /// Takes a shared hold on `build` for a game launch.
     pub fn hold(&self, build: &Installed) -> Result<BuildHold, StoreError> {
         let path = self.hold_path(&build.name, &build.build);

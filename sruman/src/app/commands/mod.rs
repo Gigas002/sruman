@@ -9,6 +9,7 @@ pub mod doctor;
 pub mod games;
 pub mod profiles;
 pub mod runtimes;
+pub mod umu;
 
 #[cfg(test)]
 mod tests;
@@ -77,6 +78,7 @@ pub fn dispatch(app: &mut App, command: &Command) -> Result<u8, AppError> {
         },
         #[cfg(feature = "diag")]
         Command::Doctor { runtimes } => doctor::doctor(app, runtimes),
+        Command::ProvideUmu { runtime, app_id } => umu::provide(app, runtime.as_ref(), *app_id),
     }
 }
 

@@ -28,6 +28,12 @@ All notable changes to this project will be documented in this file.
   `--json` for scripts; exit codes as in lootrs. A runtime missing at launch
   is offered for install (D12).
 
+- `sruman provide-umu <rt> | --appid <id>` and `libsruman::umu`: an
+  installed build as umu-launcher's runtime folder
+  (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a symlink view with umu's marker),
+  so umu runs sruman's runtime instead of downloading its own. `--json`
+  gives lootrs the folders path and the build's hold file.
+
 - Overlay mode (`[slr] mode = "overlay"`): the game runs on the host, with
   the runtime's libraries on `LD_LIBRARY_PATH` where the host's are missing
   or older. glibc and the GPU stack always come from the host, and the

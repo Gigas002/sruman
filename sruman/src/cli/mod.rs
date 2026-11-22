@@ -280,6 +280,20 @@ pub enum Command {
     /// Manage profiles.
     #[command(subcommand)]
     Profiles(ProfilesCommand),
+    /// Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so
+    /// umu runs it instead of downloading its own.
+    #[command(name = "provide-umu")]
+    #[command(group = clap::ArgGroup::new("which").required(true))]
+    ProvideUmu {
+        /// The runtime, optionally `=build`; the current build by default.
+        #[arg(value_parser = runtime_ref, group = "which")]
+        runtime: Option<RuntimeRef>,
+        /// Pick the runtime by Steam app id (Proton's `require_tool_appid`).
+        #[arg(long = "appid", value_name = "ID", group = "which")]
+        app_id: Option<u32>,
+        #[command(flatten)]
+        json: Json,
+    },
     /// Check user namespaces, bubblewrap and the runtimes.
     #[cfg(feature = "diag")]
     Doctor {
@@ -528,5 +542,10 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
         },
         #[cfg(feature = "diag")]
         Command::Doctor { runtimes } => plain(Cmd::Doctor { runtimes }),
+        Command::ProvideUmu {
+            runtime,
+            app_id,
+            json,
+        } => (Cmd::ProvideUmu { runtime, app_id }, json.get()),
     }
 }
