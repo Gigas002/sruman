@@ -3,6 +3,7 @@ use std::{fs, os::unix::fs::PermissionsExt};
 use super::*;
 use crate::{
     model::new_profile,
+    overlay::tests::{fake_host, fake_platform},
     store::{BuildMeta, MakeCurrent, Source},
     version::BuildId,
 };
@@ -15,6 +16,8 @@ struct World {
     store: Store,
     catalog: Catalog,
     bin: PathBuf,
+    /// The host's libraries for overlay mode: glibc 2.42, an old SDL.
+    host: HostLibs,
 }
 
 impl World {
@@ -28,11 +31,30 @@ impl World {
         for tool in ["gamemoderun", "mangohud"] {
             executable(&bin.join(tool));
         }
+        let host = fake_host(
+            &root.join("host"),
+            &[
+                (
+                    "libc6,x86-64",
+                    "libc.so.6",
+                    "libc.so.6",
+                    "GLIBC_2.2.5\0GLIBC_2.42\0",
+                ),
+                (
+                    "libc6,x86-64",
+                    "libSDL2-2.0.so.0",
+                    "libSDL2-2.0.so.0.3200.10",
+                    "",
+                ),
+                ("libc6,x86-64", "libz.so.1", "libz.so.1.3.1", ""),
+            ],
+        );
         let world = Self {
             store: Store::open(root.join("runtimes")),
             catalog: Catalog::builtin(),
             home,
             bin,
+            host,
             tmp,
         };
         world.install("sniper", BUILD);
@@ -59,6 +81,7 @@ impl World {
             store: &self.store,
             catalog: &self.catalog,
             shell: Some(Path::new("/usr/bin/fish")),
+            host_libs: Some(&self.host),
         }
     }
 
@@ -463,82 +486,92 @@ fn real_launch() {
             "sniper".into()
         }
     };
-    let mut profile = new_profile("real", &runtime.parse().unwrap());
-    profile.prefix = Some("~/prefixes/real".into());
-    let extra: Vec<String> = vec![
-        "-c".into(),
-        "echo \"inside HOME=$HOME\"; echo saved > \"$HOME/marker\"; sleep 4".into(),
-    ];
-    let plan = prepare(
-        Target::Exe(Path::new("/bin/sh")),
-        &profile,
-        &Tag::Session("test".into()),
-        &w.ctx(&[], &extra),
-    )
-    .unwrap();
-    let locks = w.tmp.path().join("run");
-    let launch = plan
-        .acquire(
-            &w.store,
-            &PrefixContext {
-                lock_dir: &locks,
-                home: &w.home,
-            },
+    for mode in [SlrMode::Container, SlrMode::Overlay] {
+        eprintln!("--- {mode}");
+        let mut profile = new_profile("real", &runtime.parse().unwrap());
+        profile.prefix = Some("~/prefixes/real".into());
+        profile.slr.as_mut().unwrap().mode = mode;
+        // The real host's libraries for overlay mode.
+        w.host = HostLibs::system().unwrap();
+        let extra: Vec<String> = vec![
+            "-c".into(),
+            "echo \"inside HOME=$HOME LD_LIBRARY_PATH=$LD_LIBRARY_PATH\"; echo saved > \"$HOME/marker\"; sleep 4".into(),
+        ];
+        let plan = prepare(
+            Target::Exe(Path::new("/bin/sh")),
+            &profile,
+            &Tag::Session("test".into()),
+            &w.ctx(&[], &extra),
         )
         .unwrap();
-    launch.make_inheritable().unwrap();
-    let spec = &launch.spec;
-    eprintln!("argv: {:?}", strings(spec.argv()));
-    let child = Command::new(&spec.program)
-        .args(&spec.args)
-        .envs(&spec.env)
-        .current_dir(&spec.cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    // sruman would exit here; only the child keeps the locks now.
-    drop(launch);
-    std::thread::sleep(std::time::Duration::from_secs(2));
-    let prefix_dir = w.home.join("prefixes/real");
-    for build in &plan.builds {
+        let locks = w.tmp.path().join("run");
+        let launch = plan
+            .acquire(
+                &w.store,
+                &PrefixContext {
+                    lock_dir: &locks,
+                    home: &w.home,
+                },
+            )
+            .unwrap();
+        launch.make_inheritable().unwrap();
+        let spec = &launch.spec;
+        eprintln!("argv: {:?}", strings(spec.argv()));
+        let child = Command::new(&spec.program)
+            .args(&spec.args)
+            .envs(&spec.env)
+            .current_dir(&spec.cwd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // sruman would exit here; only the child keeps the locks now.
+        drop(launch);
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let prefix_dir = w.home.join("prefixes/real");
+        for build in &plan.builds {
+            assert!(
+                w.store.in_use(build),
+                "{} held by the running game",
+                build.name
+            );
+        }
         assert!(
-            w.store.in_use(build),
-            "{} held by the running game",
-            build.name
+            prefix::in_use(&locks, &prefix_dir),
+            "prefix held by the running game"
         );
-    }
-    assert!(
-        prefix::in_use(&locks, &prefix_dir),
-        "prefix held by the running game"
-    );
 
-    let output = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    eprintln!("{stdout}");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(stdout.contains("inside HOME="), "{stdout}");
-    assert_eq!(
-        fs::read_to_string(prefix_dir.join("home/marker")).unwrap(),
-        "saved\n"
-    );
-    assert!(
-        !w.home.join("marker").exists(),
-        "the real home wasn't written"
-    );
-    for build in &plan.builds {
-        assert!(!w.store.in_use(build), "{} released", build.name);
+        let output = child.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        eprintln!("{stdout}");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(stdout.contains("inside HOME="), "{stdout}");
+        assert_eq!(
+            fs::read_to_string(prefix_dir.join("home/marker")).unwrap(),
+            "saved\n"
+        );
+        fs::remove_file(prefix_dir.join("home/marker")).unwrap();
+        if let Some(overlay) = &plan.overlay {
+            assert!(overlay.dir.is_dir(), "the overlay folder was built");
+            assert!(stdout.contains(&*overlay.dir.to_string_lossy()), "{stdout}");
+        }
+        assert!(
+            !w.home.join("marker").exists(),
+            "the real home wasn't written"
+        );
+        for build in &plan.builds {
+            assert!(!w.store.in_use(build), "{} released", build.name);
+        }
+        assert!(!prefix::in_use(&locks, &prefix_dir));
     }
-    assert!(!prefix::in_use(&locks, &prefix_dir));
 }
 
 impl World {
-    /// A build that only has `marker` (scout's entry point, scout-ldlp's
-    /// `run.sh`).
+    /// A build that only has `marker` (scout's entry point).
     fn install_marker(&self, name: &str, build: &str, marker: &str) -> Installed {
         let lock = self.store.lock().unwrap();
         let staged = self.store.staging_dir(&lock, name).unwrap();
@@ -629,18 +662,48 @@ fn scout_without_soldier_names_the_fix() {
     );
 }
 
-#[test]
-fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
-    let w = World::new();
-    let ldlp = w.install_marker("scout-ldlp", "1.0.1", "run.sh");
-    let game = w.game();
+const X64: &str = "x86_64-linux-gnu";
+
+impl World {
+    /// Gives the installed sniper build libraries: a newer SDL than the
+    /// host's, an older zlib, a library the host lacks, and glibc 2.31.
+    fn sniper_libs(&self) {
+        fake_platform(
+            &self.build_dir(),
+            &format!("sniper_platform_{BUILD}"),
+            &[
+                (X64, "libSDL2-2.0.so.0", "libSDL2-2.0.so.0.3200.74", "sdl"),
+                (X64, "libz.so.1", "libz.so.1.2.11", "z"),
+                (X64, "libpng16.so.16", "libpng16.so.16.37.0", "png"),
+                (X64, "libc.so.6", "libc.so.6", "GLIBC_2.2.5\0GLIBC_2.31\0"),
+            ],
+        );
+    }
+}
+
+fn overlay_profile() -> Profile {
     let mut profile = profile();
-    profile.slr.as_mut().unwrap().runtime = "scout-ldlp".into();
+    let slr = profile.slr.as_mut().unwrap();
+    slr.mode = SlrMode::Overlay;
+    slr.filesystems_rw.clear();
+    slr.filesystems_ro.clear();
+    profile.runner_args.clear();
     profile.shader_cache = None;
+    profile
+        .env
+        .insert("LD_LIBRARY_PATH".into(), "/opt/profile/lib".into());
+    profile
+}
+
+#[test]
+fn overlay_runs_on_the_host_with_the_runtimes_newer_libraries_first() {
+    let w = World::new();
+    w.sniper_libs();
+    let game = w.game();
     let search = [w.bin.clone()];
     let plan = prepare(
         Target::Game(&game),
-        &profile,
+        &overlay_profile(),
         &Tag::Game("buckshot".into()),
         &w.ctx(&search, &[]),
     )
@@ -653,29 +716,35 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
             format!("{bin}/gamemoderun"),
             format!("{bin}/mangohud"),
             "--dlsym".into(),
-            ldlp.dir.join("run.sh").display().to_string(),
             w.home
                 .join("Games/Buckshot/Buckshot Roulette.x86_64")
                 .display()
                 .to_string(),
             "--fullscreen".into(),
         ],
-        "no runner args, no --pass-fd"
+        "the game itself: no entry point, no --pass-fd"
     );
+    let overlay = plan.overlay.clone().unwrap();
+    let build = w.store.resolve(&"sniper".parse().unwrap()).unwrap();
+    assert_eq!(overlay.dir.parent().unwrap(), w.store.overlay_dir(&build));
+    assert_eq!(
+        spec.env["LD_LIBRARY_PATH"],
+        OsString::from(format!(
+            "{}:{}:/opt/profile/lib",
+            overlay.dir.join(X64).display(),
+            overlay.dir.join("i386-linux-gnu").display()
+        ))
+    );
+    let linked: Vec<&str> = overlay.links[&Abi::X86_64]
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(linked, ["libSDL2-2.0.so.0", "libpng16.so.16"]);
     let home = w.home.join("prefixes/indie/home");
     assert_eq!(spec.env["HOME"], home.as_os_str());
     assert_eq!(
-        spec.env["XDG_CONFIG_HOME"],
-        home.join(".config").as_os_str()
-    );
-    assert_eq!(
         spec.env["XDG_DATA_HOME"],
         home.join(".local/share").as_os_str()
-    );
-    assert_eq!(spec.env["XDG_CACHE_HOME"], home.join(".cache").as_os_str());
-    assert_eq!(
-        spec.env["XDG_STATE_HOME"],
-        home.join(".local/state").as_os_str()
     );
     assert!(
         spec.env.keys().all(|k| !k.starts_with("PRESSURE_VESSEL")),
@@ -683,27 +752,161 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
         spec.env.keys()
     );
     assert_eq!(spec.env["SRUMAN_GAME"], "buckshot");
+    assert_eq!(spec.env["A"], "game");
+    let names: Vec<&str> = plan.builds.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, ["sniper"]);
     assert_eq!(plan.prefix.as_ref().unwrap().home, HomeMode::Env);
+    assert!(!overlay.dir.exists(), "prepare doesn't write");
 
-    // Without a prefix the real home stays.
-    let plain = new_profile("p", &"scout-ldlp".parse().unwrap());
-    let spec = prepare(
+    // `acquire` builds the folder and holds the build.
+    let locks = w.tmp.path().join("locks");
+    let ctx = PrefixContext {
+        lock_dir: &locks,
+        home: &w.home,
+    };
+    let launch = plan.acquire(&w.store, &ctx).unwrap();
+    assert_eq!(
+        fs::read_link(overlay.dir.join(X64).join("libSDL2-2.0.so.0")).unwrap(),
+        build.dir.join(format!(
+            "sniper_platform_{BUILD}/files/lib/{X64}/libSDL2-2.0.so.0.3200.74"
+        ))
+    );
+    assert!(w.store.in_use(&build));
+    assert!(w.home.join("prefixes/indie/home/.config").is_dir());
+    drop(launch);
+
+    // Removing the build removes its overlays.
+    let lock = w.store.lock().unwrap();
+    w.store.remove(&lock, &build, false).unwrap();
+    assert!(!w.store.overlay_dir(&build).exists());
+}
+
+#[test]
+fn overlay_without_a_prefix_keeps_the_real_home_and_shell() {
+    let w = World::new();
+    w.sniper_libs();
+    let mut plain = new_profile("p", &"sniper".parse().unwrap());
+    plain.slr.as_mut().unwrap().mode = SlrMode::Overlay;
+    let plan = prepare(
         Target::Shell,
         &plain,
         &Tag::Session("s".into()),
         &w.ctx(&[], &[]),
     )
-    .unwrap()
-    .spec(&[]);
+    .unwrap();
+    let spec = plan.spec(&[]);
+    assert_eq!(strings(spec.argv()), ["/usr/bin/fish"]);
     assert!(!spec.env.contains_key("HOME"));
+    assert!(!spec.env.contains_key("PRESSURE_VESSEL_SHELL"));
+    assert_eq!(spec.cwd, w.home);
+    assert!(plan.prefix.is_none());
+    let path = spec.env["LD_LIBRARY_PATH"].to_string_lossy().into_owned();
+    assert!(!path.ends_with(':'), "{path}");
+}
+
+#[test]
+fn scout_in_overlay_mode_needs_no_soldier() {
+    let w = World::new();
+    let scout = w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
+    let lib = scout.dir.join(format!("steam-runtime/lib/{X64}"));
+    fs::create_dir_all(&lib).unwrap();
+    fs::write(lib.join("libpng12.so.0.46.0"), "png").unwrap();
+    std::os::unix::fs::symlink("libpng12.so.0.46.0", lib.join("libpng12.so.0")).unwrap();
+    let mut profile = new_profile("scout", &"scout".parse().unwrap());
+    profile.slr.as_mut().unwrap().mode = SlrMode::Overlay;
+    let game = w.game();
+    let plan = prepare(
+        Target::Game(&game),
+        &profile,
+        &Tag::Game("buckshot".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
+    let names: Vec<&str> = plan.builds.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, ["scout"], "no soldier");
+    let overlay = plan.overlay.as_ref().unwrap();
     assert_eq!(
-        strings(spec.argv()),
+        overlay.links[&Abi::X86_64]["libpng12.so.0"],
+        lib.join("libpng12.so.0.46.0")
+    );
+    assert_eq!(
+        strings(plan.spec(&[]).argv())[0],
+        w.home
+            .join("Games/Buckshot/Buckshot Roulette.x86_64")
+            .display()
+            .to_string()
+    );
+}
+
+#[test]
+fn overlay_refuses_a_runtime_newer_than_the_hosts_glibc() {
+    let w = World::new();
+    fake_platform(
+        &w.build_dir(),
+        &format!("sniper_platform_{BUILD}"),
+        &[(X64, "libc.so.6", "libc.so.6", "GLIBC_2.2.5\0GLIBC_2.43\0")],
+    );
+    let mut profile = new_profile("p", &"sniper".parse().unwrap());
+    profile.slr.as_mut().unwrap().mode = SlrMode::Overlay;
+    let err = prepare(
+        Target::Shell,
+        &profile,
+        &Tag::Session("s".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.problems,
         [
-            ldlp.dir.join("run.sh").display().to_string(),
-            "/usr/bin/fish".into()
+            "overlay mode needs the host's glibc to be at least the runtime's: the runtime has \
+          2.43, the host 2.42; use `mode = \"container\"`"
         ]
     );
-    assert!(!spec.env.contains_key("PRESSURE_VESSEL_SHELL"));
+    // preflight says the same.
+    let text = issue_text(&preflight(&profile, &w.ctx(&[], &[])));
+    assert_eq!(text.len(), 1, "{text:?}");
+    assert!(text[0].contains("2.43"), "{text:?}");
+}
+
+#[test]
+fn preflight_names_overrides_that_cannot_apply() {
+    let w = World::new();
+    w.sniper_libs();
+    let mut profile = new_profile("p", &"sniper".parse().unwrap());
+    let slr = profile.slr.as_mut().unwrap();
+    slr.mode = SlrMode::Overlay;
+    slr.lib_overrides = BTreeMap::from([
+        ("libSDL2-2.0.so.0".into(), LibOverride::Host),
+        ("libz.so.1".into(), LibOverride::Runtime),
+        ("libpng16.so.16".into(), LibOverride::Host),
+        ("libnothere.so.1".into(), LibOverride::Runtime),
+        ("libalso.so.2".into(), LibOverride::Newest),
+    ]);
+    let text = issue_text(&preflight(&profile, &w.ctx(&[], &[])));
+    assert_eq!(
+        text,
+        [
+            "warning: profile `p`: `slr.lib_overrides.\"libalso.so.2\"`: neither sniper \
+             3.0.20261021.266025 nor the host has a x86_64-linux-gnu copy",
+            "warning: profile `p`: `slr.lib_overrides.\"libnothere.so.1\"` = \"runtime\", but \
+             sniper 3.0.20261021.266025 has no x86_64-linux-gnu copy",
+            "warning: profile `p`: `slr.lib_overrides.\"libpng16.so.16\"` = \"host\", but the \
+             host has no x86_64-linux-gnu copy",
+        ]
+    );
+    // The overrides that apply change the folder.
+    let plan = prepare(
+        Target::Shell,
+        &profile,
+        &Tag::Session("s".into()),
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
+    let linked: Vec<&str> = plan.overlay.as_ref().unwrap().links[&Abi::X86_64]
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(linked, ["libz.so.1"]);
 }
 
 fn issue_text(issues: &[Issue]) -> Vec<String> {

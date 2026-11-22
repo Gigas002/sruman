@@ -15,6 +15,7 @@ pub mod launch;
 pub mod manifest;
 pub mod model;
 pub mod mtree;
+pub mod overlay;
 pub mod paths;
 pub mod prefix;
 pub mod process;

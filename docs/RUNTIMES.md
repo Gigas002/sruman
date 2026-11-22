@@ -7,7 +7,6 @@ What sruman installs, where it gets it, and how that's checked.
 | Name         | Server dir | Archive                              | Base           | Runs as                                   |
 | ------------ | ---------- | ------------------------------------ | -------------- | ----------------------------------------- |
 | `scout`      | `steamrt1` | `SteamLinuxRuntime.tar.xz`           | Ubuntu 12.04   | inside a `soldier` container (needs it)   |
-| `scout-ldlp` | `steamrt1` | `steam-runtime.tar.xz`               | Ubuntu 12.04   | no container (`LD_LIBRARY_PATH`)          |
 | `soldier`    | `steamrt2` | `SteamLinuxRuntime_soldier.tar.xz`   | Debian 10      | container (pressure-vessel)               |
 | `sniper`     | `steamrt3` | `SteamLinuxRuntime_sniper.tar.xz`    | Debian 11      | container (pressure-vessel)               |
 | `steamrt4`   | `steamrt4` | `SteamLinuxRuntime_4.tar.xz` (+ `-arm64`) | Debian 13 | container (pressure-vessel)               |

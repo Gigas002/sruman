@@ -8,5 +8,5 @@ prefix = "~/.local/share/sruman/prefixes/scout"   # saves and configs go to <pre
 
 [slr]
 runtime = "scout"
-# runtime = "scout-ldlp"                   # no container: faster, but the prefix only
-#                                          # redirects HOME and XDG_* (see docs)
+# mode = "overlay"                         # no container (no soldier needed): faster,
+#                                          # but the prefix only redirects HOME and XDG_*

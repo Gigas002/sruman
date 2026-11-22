@@ -173,18 +173,22 @@ pub enum Tools {
     /// A container runtime's `pressure-vessel` (or `pressure-vessel-arm64`)
     /// directory; tools run directly from `bin/`.
     PressureVessel(PathBuf),
-    /// scout-ldlp: tools live in `<build>/amd64/usr/bin` and need the
-    /// runtime's libraries, so they run through `<build>/run.sh`.
+    /// Scout's LD_LIBRARY_PATH runtime (`<scout>/steam-runtime`, overlay
+    /// mode): tools live in `amd64/usr/bin` and need its libraries, so they
+    /// run through its `run.sh`.
     Ldlp(PathBuf),
 }
 
 /// The tools for a resolved profile runtime (`launch::resolve_runtimes`).
-/// Scout uses its soldier's. `None` when the build has none for `arch`.
+/// Scout uses its soldier's in container mode, its own `steam-runtime` in
+/// overlay mode. `None` when the build has none for `arch`.
 pub fn tools_for(runtimes: &Runtimes, arch: Arch) -> Option<Tools> {
-    let tools = match runtimes.entry {
-        Entry::Container => pressure_vessel(&runtimes.runtime.dir, arch),
-        Entry::ScoutOnSoldier => pressure_vessel(&runtimes.host.as_ref()?.dir, arch),
-        Entry::Ldlp => (arch == Arch::X86_64).then(|| Tools::Ldlp(runtimes.runtime.dir.clone())),
+    let tools = match (runtimes.entry, &runtimes.host) {
+        (Entry::Container, _) => pressure_vessel(&runtimes.runtime.dir, arch),
+        (Entry::ScoutOnSoldier, Some(soldier)) => pressure_vessel(&soldier.dir, arch),
+        (Entry::ScoutOnSoldier, None) => {
+            (arch == Arch::X86_64).then(|| Tools::Ldlp(runtimes.runtime.dir.join("steam-runtime")))
+        }
     }?;
     tools.program(SYSTEM_INFO).is_file().then_some(tools)
 }
@@ -206,7 +210,7 @@ impl Tools {
     pub fn program(&self, tool: &str) -> PathBuf {
         match self {
             Self::PressureVessel(dir) => dir.join("bin").join(tool),
-            Self::Ldlp(build) => build.join("amd64/usr/bin").join(tool),
+            Self::Ldlp(dir) => dir.join("amd64/usr/bin").join(tool),
         }
     }
 
@@ -225,7 +229,7 @@ impl Tools {
     pub fn argv(&self, tool: &str, args: &[&str]) -> Vec<PathBuf> {
         let mut argv = match self {
             Self::PressureVessel(_) => vec![self.program(tool)],
-            Self::Ldlp(build) => vec![build.join(Entry::Ldlp.marker()), self.program(tool)],
+            Self::Ldlp(dir) => vec![dir.join("run.sh"), self.program(tool)],
         };
         argv.extend(args.iter().map(PathBuf::from));
         argv

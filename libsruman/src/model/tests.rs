@@ -126,9 +126,27 @@ fn sruman_runs_slr_profiles() {
     overlay.slr.as_mut().unwrap().mode = SlrMode::Overlay;
     assert_eq!(
         check(&overlay),
+        Vec::<String>::new(),
+        "overlay is supported"
+    );
+
+    // glibc and the GPU stack can't come from the runtime (D14).
+    overlay.slr.as_mut().unwrap().lib_overrides = [
+        ("libc.so.6", LibOverride::Runtime),
+        ("libvulkan.so.1", LibOverride::Runtime),
+        ("libGL.so.1", LibOverride::Host),
+        ("libSDL2-2.0.so.0", LibOverride::Runtime),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v))
+    .collect();
+    assert_eq!(
+        check(&overlay),
         [
-            "error: profile `o`: `slr.mode = \"overlay\"` isn't supported yet; for scout without a \
-          container, use the `scout-ldlp` runtime"
+            "error: profile `o`: `slr.lib_overrides.\"libc.so.6\"` can't be \"runtime\": glibc \
+             always comes from the host in overlay mode",
+            "error: profile `o`: `slr.lib_overrides.\"libvulkan.so.1\"` can't be \"runtime\": the \
+             GPU stack always comes from the host in overlay mode",
         ]
     );
 
@@ -158,24 +176,23 @@ fn validation_collects_every_problem() {
             "error: profile `invalid`: `env` key `` is not a valid variable name",
             "error: profile `invalid`: `shader_cache` must be an absolute path (or start with `~`), got `cache`",
             "error: profile `invalid`: `slr.filesystems_rw` must be an absolute path (or start with `~`), got `games`",
-            "error: profile `invalid`: `slr.runtime`: unknown runtime `snipper`; known: scout, scout-ldlp, sniper, soldier, steamrt4",
+            "error: profile `invalid`: `slr.runtime`: unknown runtime `snipper`; known: scout, sniper, soldier, steamrt4",
         ]
     );
 }
 
 #[test]
-fn scout_ldlp_warns_about_what_it_cannot_do() {
+fn scout_ldlp_points_at_scout_in_overlay_mode() {
     let catalog = Catalog::builtin();
     let loaded = load_dir(&fixtures("bad"));
-    let issues = validate_profile(&loaded.profiles["ldlp"], &ctx(&catalog));
-    assert!(issues.iter().all(|i| !i.is_error()), "{issues:#?}");
-    let text = messages(&issues).join("\n");
-    assert!(
-        text.contains("`slr.filesystems_ro` is ignored for `scout-ldlp`"),
-        "{text}"
+    let text = messages(&validate_profile(&loaded.profiles["ldlp"], &ctx(&catalog)));
+    assert_eq!(
+        text,
+        [
+            "error: profile `ldlp`: `slr.runtime`: `scout-ldlp` is now `scout` with \
+          `mode = \"overlay\"`"
+        ]
     );
-    assert!(text.contains("only redirects `HOME` and `XDG_*`"), "{text}");
-    assert!(text.contains("`runner_args` is ignored"), "{text}");
 }
 
 #[test]
@@ -204,7 +221,7 @@ fn implicit_profiles_fill_in_for_catalog_runtimes() {
     );
     assert_eq!(
         shadowing.implicit_names(&catalog).collect::<Vec<_>>(),
-        ["scout", "scout-ldlp", "sniper", "steamrt4"]
+        ["scout", "sniper", "steamrt4"]
     );
 }
 

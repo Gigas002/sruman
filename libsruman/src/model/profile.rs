@@ -1,8 +1,8 @@
 //! Profiles: `profiles/<name>.toml`, in the libgameprofiles format shared
 //! with lootrs and gaki.
 //!
-//! A sruman profile has `runner = "slr"` and an `[slr]` section: the runtime
-//! and what its container sees. libgameprofiles checks the file itself;
+//! A sruman profile has `runner = "slr"` and an `[slr]` section: the runtime,
+//! the mode (container or overlay) and what the game sees. libgameprofiles checks the file itself;
 //! [`validate_profile`] adds what a sruman launch needs: the runner, a mode
 //! sruman supports, and a runtime the catalog knows.
 
@@ -14,10 +14,7 @@ use std::{
 pub use libgameprofiles::{LibOverride, Profile, Runner, ShaderCache, SlrMode, SlrSection, store};
 
 use super::{Issue, Issues, ModelError, Subject, ValidationContext};
-use crate::{
-    catalog::{Catalog, Entry},
-    version::RuntimeRef,
-};
+use crate::{catalog::Catalog, overlay, version::RuntimeRef};
 
 /// The `[slr]` section of a profile sruman can run, and its parsed runtime,
 /// or why it can't run it.
@@ -39,9 +36,6 @@ pub fn slr(profile: &Profile) -> Result<(&SlrSection, RuntimeRef), String> {
     let Some(slr) = &profile.slr else {
         return Err(MISSING_SLR.to_owned());
     };
-    if slr.mode == SlrMode::Overlay {
-        return Err(OVERLAY_UNSUPPORTED.to_owned());
-    }
     let runtime = slr
         .runtime
         .parse::<RuntimeRef>()
@@ -52,9 +46,8 @@ pub fn slr(profile: &Profile) -> Result<(&SlrSection, RuntimeRef), String> {
 /// libgameprofiles' own error for an `slr` profile without `[slr]`.
 const MISSING_SLR: &str = "`[slr]` is required for runner `slr`: it names the runtime";
 
-/// Overlay mode needs PLAN steps 3b.2–3b.3.
-const OVERLAY_UNSUPPORTED: &str = "`slr.mode = \"overlay\"` isn't supported yet; for scout \
-     without a container, use the `scout-ldlp` runtime";
+/// scout's LD_LIBRARY_PATH runtime was its own catalog entry before D13.
+const SCOUT_LDLP: &str = "scout-ldlp";
 
 /// A `native` profile running in `runtime`, with nothing else set.
 pub fn new_profile(name: impl Into<String>, runtime: &RuntimeRef) -> Profile {
@@ -71,7 +64,7 @@ pub fn validate_profile(profile: &Profile, ctx: &ValidationContext) -> Vec<Issue
     let mut issues = Issues::new(Subject::Profile(profile.name.clone()));
     issues.extend(profile.validate(ctx.home));
     match slr(profile) {
-        Ok((slr, runtime)) => check_slr(slr, &runtime, profile, ctx.catalog, &mut issues),
+        Ok((slr, runtime)) => check_slr(slr, &runtime, ctx.catalog, &mut issues),
         // libgameprofiles has already reported it.
         Err(message) if message == MISSING_SLR => {}
         Err(message) => issues.error(message),
@@ -79,46 +72,35 @@ pub fn validate_profile(profile: &Profile, ctx: &ValidationContext) -> Vec<Issue
     issues.finish()
 }
 
-/// The runtime must be a catalog one, and an `ldlp` runtime (no container)
-/// ignores some settings.
-fn check_slr(
-    slr: &SlrSection,
-    runtime: &RuntimeRef,
-    profile: &Profile,
-    catalog: &Catalog,
-    issues: &mut Issues,
-) {
+/// The runtime must be a catalog one, and `[slr.lib_overrides]` can't ask
+/// for the runtime's glibc or GPU libraries (D14). libgameprofiles warns
+/// about settings a mode ignores.
+fn check_slr(slr: &SlrSection, runtime: &RuntimeRef, catalog: &Catalog, issues: &mut Issues) {
+    for (lib, setting) in &slr.lib_overrides {
+        if *setting == LibOverride::Runtime && overlay::host_only(lib) {
+            let what = if overlay::is_glibc(lib) {
+                "glibc"
+            } else {
+                "the GPU stack"
+            };
+            issues.error(format!(
+                "`slr.lib_overrides.\"{lib}\"` can't be \"runtime\": {what} always comes from \
+                 the host in overlay mode"
+            ));
+        }
+    }
     let name = &runtime.name;
-    let Some(def) = catalog.get(name) else {
+    if name == SCOUT_LDLP && catalog.get(name).is_none() {
+        issues.error(format!(
+            "`slr.runtime`: `{SCOUT_LDLP}` is now `scout` with `mode = \"overlay\"`"
+        ));
+        return;
+    }
+    if catalog.get(name).is_none() {
         let known: Vec<&str> = catalog.names().collect();
         issues.error(format!(
             "`slr.runtime`: unknown runtime `{name}`; known: {}",
             known.join(", ")
-        ));
-        return;
-    };
-    if def.entry != Entry::Ldlp {
-        return;
-    }
-    for (field, paths) in [
-        ("slr.filesystems_rw", &slr.filesystems_rw),
-        ("slr.filesystems_ro", &slr.filesystems_ro),
-    ] {
-        if !paths.is_empty() {
-            issues.warn(format!(
-                "`{field}` is ignored for `{name}`: it has no container, so everything is shared"
-            ));
-        }
-    }
-    if profile.prefix.is_some() {
-        issues.warn(format!(
-            "`{name}` has no container: the prefix home only redirects `HOME` and `XDG_*`, \
-             so a game that looks up its home another way still reaches the real one"
-        ));
-    }
-    if !profile.runner_args.is_empty() {
-        issues.warn(format!(
-            "`runner_args` is ignored for `{name}`: it has no container"
         ));
     }
 }

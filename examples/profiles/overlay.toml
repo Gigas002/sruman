@@ -1,0 +1,14 @@
+# ~/.config/sruman/profiles/overlay.toml
+# A native game on your own system, with sniper's libraries filling in what
+# your system lacks or has older: no container, your real home (no prefix).
+# Your C library and graphics drivers always stay the host's.
+
+name = "overlay"
+runner = "slr"
+
+[slr]
+runtime = "sniper"
+mode = "overlay"
+
+[slr.lib_overrides]                      # default: the newer copy of each library
+"libSDL2-2.0.so.0" = "host"              # runtime | host | newest

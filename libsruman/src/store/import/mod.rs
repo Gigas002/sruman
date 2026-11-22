@@ -21,9 +21,14 @@ mod tests;
 pub enum ImportError {
     #[error(
         "{0} doesn't look like a Steam Linux Runtime: expected `run` and a `*_platform_*` directory, \
-         `scout-on-soldier-entry-point-v2`, or `run.sh` with `version.txt`"
+         or `scout-on-soldier-entry-point-v2`"
     )]
     NotARuntime(PathBuf),
+    #[error(
+        "{0} is scout's LD_LIBRARY_PATH runtime on its own: import the `SteamLinuxRuntime` \
+         directory around it (`scout`), and use `mode = \"overlay\"` to run without a container"
+    )]
+    ScoutLdlp(PathBuf),
     #[error("{dir}: can't tell the build id: {message}")]
     NoBuildId { dir: PathBuf, message: String },
     #[error("{dir} holds `{found}`, not `{expected}`")]
@@ -58,7 +63,8 @@ pub enum ImportMode {
 /// - `scout-on-soldier-entry-point-v2` → `scout`, build from `VERSIONS.txt`;
 /// - `run` + `<name>_platform_<build>/` → `<name>`, build from
 ///   `VERSIONS.txt` (`depot` line), else the platform directory's suffix;
-/// - `run.sh` + `version.txt` (`steam-runtime_<build>`) → `scout-ldlp`.
+/// - `run.sh` + `version.txt` alone (scout's `steam-runtime/`) is refused
+///   with a hint: it is part of `scout`, whose overlay mode replaces it.
 pub fn detect(dir: &Path, catalog: &Catalog) -> Result<Detected, ImportError> {
     let has = |name: &str| dir.join(name).is_file();
     let (name, entry, build) = if has(Entry::ScoutOnSoldier.marker()) {
@@ -71,17 +77,8 @@ pub fn detect(dir: &Path, catalog: &Catalog) -> Result<Detected, ImportError> {
             Err(_) => platform_build,
         };
         (name, Entry::Container, build)
-    } else if has(Entry::Ldlp.marker()) && has("version.txt") {
-        let text = read(dir, "version.txt")?;
-        let build = text
-            .trim()
-            .strip_prefix("steam-runtime_")
-            .and_then(|b| b.parse().ok())
-            .ok_or_else(|| ImportError::NoBuildId {
-                dir: dir.to_path_buf(),
-                message: format!("version.txt says `{}`", text.trim()),
-            })?;
-        ("scout-ldlp".to_owned(), Entry::Ldlp, build)
+    } else if has("run.sh") && has("version.txt") {
+        return Err(ImportError::ScoutLdlp(dir.to_path_buf()));
     } else {
         return Err(ImportError::NotARuntime(dir.to_path_buf()));
     };
