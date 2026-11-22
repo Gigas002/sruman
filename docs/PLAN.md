@@ -1,15 +1,15 @@
 # sruman — implementation plan
 
-**sruman** (Steam Runtime Manager) is a pacman/paru-style package manager for
+**sruman** (Steam Runtime Manager) is a package manager for
 the **Steam Linux Runtime** (SLR) that works without Steam. It also runs native
 Linux games inside those runtimes through lootrs-style games, profiles and prefixes:
 
 ```sh
 wine hollow_knight.exe                          # Windows game in a wine prefix
-sruman -p scout ./hollow_knight.x86_64          # native game in an SLR "prefix"
-sruman hollow-knight                            # the same, as a named game from games.toml
-sruman -S sniper                                # install a runtime
-sruman                                          # = sruman -Syu: refresh + upgrade all
+sruman execute -p scout ./hollow_knight.x86_64  # native game in an SLR "prefix"
+sruman run hollow-knight                        # the same, as a named game from games.toml
+sruman install sniper                           # install a runtime
+sruman upgrade --sync                           # refresh + upgrade all
 ```
 
 The workspace ships two crates, cloned from `rust-template`:
@@ -17,12 +17,12 @@ The workspace ships two crates, cloned from `rust-template`:
 | Crate       | Kind | Binary   | Role                                                                          |
 | ----------- | ---- | -------- | ----------------------------------------------------------------------------- |
 | `libsruman` | lib  | —        | All logic: catalog, sync index, store, install/verify, profiles, prefixes, launch |
-| `sruman`    | bin  | `sruman` | Thin paru-like CLI over `libsruman`: settings, logging, output, process control |
+| `sruman`    | bin  | `sruman` | Thin CLI over `libsruman`: settings, logging, output, process control |
 
 Both are **GPL-3.0-or-later**, the same as lootrs. `sruman` is CLI only: no
 TUI and no GUI.
 
-`lootrs` and `gaki` will later use `libsruman` as an optional feature (see
+`lootrs` and `gaki` will later run games through the `sruman` CLI (see
 "Downstream integration"). That shapes the library API from the start, but the
 work in those repos isn't part of this plan.
 
@@ -30,8 +30,8 @@ References: `docs/ARCHITECTURE.md` (layout, settings pipeline, quality gates);
 `../lootrs` for profiles (`model::Profile`, named files, `validate` → `Vec<Issue>`),
 prefixes (`prefix::ensure` reconciling against a state file, per-prefix flock,
 exit 4 when busy), `launch::prepare`/`LaunchSpec`, XDG paths, process tags and
-run logs; `../gaki` D9 for how a sibling tool shares `liblootrs`' model;
-pacman/paru for the CLI grammar and output.
+run logs; `../libgameprofiles` for the profile format; lootrs and gaki for
+the command style (D9); pacman for the transaction output.
 
 ---
 
@@ -39,11 +39,12 @@ pacman/paru for the CLI grammar and output.
 
 1. **Package manager for SLR.** Refresh an index, search, show info, install
    (with dependencies), upgrade, downgrade/pin, verify, remove, and clean the
-   cache, using pacman's verbs and output. Several builds of a runtime can be
+   cache, with plain verbs (`install`, `upgrade`, …) and pacman-like
+   transaction output. Several builds of a runtime can be
    installed side by side.
 2. **Games, profiles and prefixes like lootrs.** A `games.toml` names games
-   (`exe`, `profile`, `args`, `cwd`, `env`), so `sruman <game>` and
-   `sruman <path>` both work. Profiles are named files
+   (`exe`, `profile`, `args`, `cwd`, `env`), so `sruman run <game>` and
+   `sruman execute <path>` both work. Profiles are named files
    (`profiles/<name>.toml`, name = file stem). Each one names a runtime and an
    optional `prefix` path, and several profiles can share one prefix. The
    prefix holds the game's private `$HOME`, so saves and configs stay there,
@@ -201,83 +202,102 @@ verified the ones that depended on runtime behavior.
 | D4  | **Versions and pin syntax.** | **Settled: Valve's build id** (`3.0.20261021.266025`) is the version, so pacman's `name=version` syntax works: `sruman -S sniper=3.0.20261021.266025`, or `runtime = "sniper=3.0.…"` in a profile. A bare `sniper` follows the newest installed build (per-suite `current` symlink). Build ids compare numerically, part by part. |
 | D5  | **Install from apt or from images?** You suggested apt for getting runtimes and tracking updates. | **Settled: install from `images/`, and track updates the apt way on top of it.** The apt archive holds the hundreds of `.deb`s a runtime is built from, not the runtime itself. Installing from it would mean resolving Debian dependencies, unpacking debs, and assembling a pressure-vessel container the way Valve's image pipeline does: rebuilding the runtime instead of using the one games are tested against. `images/` already gives what apt would: channel pointers (an index), versioned build dirs (history and downgrades), `SHA256SUMS`, and per-build `manifest.dpkg` (exact package versions). sruman uses those manifests for apt-level tracking: `-Si`/`-Qi` list packages, `-Qu`/`-Su` show which packages change in an upgrade (e.g. `mesa 25.1 → 25.2`), and `-Ss libvulkan` searches package names across runtimes. The cost is that images are only checksum-verified over HTTPS, while apt is GPG-signed. A later, optional hardening step could cross-check `pressure-vessel-relocatable`/`steamrt-container` versions from a manifest against the signed apt `Packages` index. |
 | D6  | **Channels.** | Three channel names map to pointer files: `stable` → `latest-public-stable` (**settled default**), `beta` → `latest-public-beta`, and `steam` → `latest-container-runtime-depot`, falling back to `latest-steam-client-general-availability` (what the Steam client ships). Channels can be set globally (`channel`) or per runtime (`[channels] sniper = "beta"`), like enabling `[testing]` in pacman. |
-| D7  | **Scout.** | **Settled: two installable runtimes**, the way the server publishes them: `scout` (the scout-on-soldier container, `depends = ["soldier"]`, verified: the scout archive bundles its own `steam-runtime/`) and `scout-ldlp` (the plain LD_LIBRARY_PATH runtime: no container, no userns needed, less isolated). `-S scout` pulls the dependencies in, pacman-style. |
+| D7  | **Scout.** | **Settled: two installable runtimes**, the way the server publishes them: `scout` (the scout-on-soldier container, `depends = ["soldier"]`, verified: the scout archive bundles its own `steam-runtime/`) and `scout-ldlp` (the plain LD_LIBRARY_PATH runtime: no container, no userns needed, less isolated). `-S scout` pulls the dependencies in, pacman-style. **Revised 2026-11-22 (planned, step 3b.4):** with D13, `scout-ldlp` stops being its own runtime: it is `scout` with `mode = "overlay"`, so the catalog has one scout entry and the profile picks the mode. |
 | D8  | **Catalog.** | **Settled:** a built-in table (suite name, server dir, archive name per arch, entry point, depends, channel fallbacks) that `config.toml` `[[runtime]]` entries can extend or override, so a mirror or a future `steamrt5` needs no release. |
-| D9  | **CLI.** | **Settled: paru-like**, see "CLI" below. Bare `sruman` = `-Syu`. A bare target always **runs**: a game from `games.toml` (`sruman hollow-knight`), or a path (`sruman -p scout ./game`, `sruman ./game`), resolved as in D10. Searching is only `-Ss`, with no paru-style interactive bare search. The operations beyond pacman's are `-P` (profiles), `-X` (execute) and `-D` (doctor; unlike pacman's `-D` database operation). |
-| D10 | **Games list?** | **Settled: yes, lootrs' `games.toml`.** `[[game]]` entries with lootrs' fields (`name`, `exe`, `profile`, `args`, `cwd`, `env`; no `game_id`, which is umu-only). A run target is resolved by a shell-like rule: if it contains `/` or starts with `~`, it's a **path**; otherwise it's a **game name** from `games.toml`. An unknown name that matches a file in the current directory fails with `error: no game 'foo' (did you mean ./foo?)`, so a name never silently runs a file. `-p` on a game overrides its profile for that run. |
-| D11 | **Prefix home mechanism.** | **Settled (verified in the spike): pressure-vessel's private home.** A profile with a `prefix` runs with `PRESSURE_VESSEL_HOME=<prefix>/home`, so `$HOME` and `getpwent` both resolve to it, and the real home is hidden except the cwd and shared paths. sruman adds the exe's directory, `cwd`, the prefix, and (for scout) the scout build dir (RW, for its `var/`) to `PRESSURE_VESSEL_FILESYSTEMS_*`, plus the profile's `filesystems_rw/ro`. `scout-ldlp` has no container, so it falls back to env redirection (`HOME`, `XDG_*_HOME`), and `-Pk` warns that this is weaker there. |
+| D9  | **CLI.** | **Settled: paru-like**, see "CLI" below. Bare `sruman` = `-Syu`. A bare target always **runs**: a game from `games.toml` (`sruman hollow-knight`), or a path (`sruman -p scout ./game`, `sruman ./game`), resolved as in D10. Searching is only `-Ss`, with no paru-style interactive bare search. The operations beyond pacman's are `-P` (profiles), `-X` (execute) and `-D` (doctor; unlike pacman's `-D` database operation). **Revised 2026-11-22: subcommands in lootrs' and gaki's style** (`sruman install sniper`, `sruman run hollow-knight`, `sruman profiles list`), see "CLI". Plain verbs read and script better, match the sibling tools, and fit the `sruman build …` commands planned for `SLRBUILD`. Bare `sruman` prints the help. Step 4.1 is redone as 4.1b; nothing after it was built on the pacman grammar. |
+| D10 | **Games list?** | **Settled: yes, lootrs' `games.toml`.** `[[game]]` entries with lootrs' fields (`name`, `exe`, `profile`, `args`, `cwd`, `env`; no `game_id`, which is umu-only). A run target is resolved by a shell-like rule: if it contains `/` or starts with `~`, it's a **path**; otherwise it's a **game name** from `games.toml`. An unknown name that matches a file in the current directory fails with `error: no game 'foo' (did you mean ./foo?)`, so a name never silently runs a file. `-p` on a game overrides its profile for that run. **Revised 2026-11-22:** with D9's subcommands the ambiguity is gone: `run <game>` takes only game names and `execute <path|program>` only executables, as in lootrs. The "did you mean ./foo" rule is dropped. |
+| D11 | **Prefix home mechanism.** | **Settled (verified in the spike): pressure-vessel's private home.** A profile with a `prefix` runs with `PRESSURE_VESSEL_HOME=<prefix>/home`, so `$HOME` and `getpwent` both resolve to it, and the real home is hidden except the cwd and shared paths. sruman adds the exe's directory, `cwd`, the prefix, and (for scout) the scout build dir (RW, for its `var/`) to `PRESSURE_VESSEL_FILESYSTEMS_*`, plus the profile's `filesystems_rw/ro`. `scout-ldlp` has no container, so it falls back to env redirection (`HOME`, `XDG_*_HOME`), and `-Pk` warns that this is weaker there. **Revised 2026-11-22:** "no container" now means `mode = "overlay"` (D13) on any runtime, not only `scout-ldlp`; the env-redirection fallback and its warning apply to every overlay profile with a `prefix`. |
 | D12 | **Missing runtime at launch.** | **Settled: prompt.** On a TTY: `:: Runtime sniper is not installed. Install it now? [Y/n]`, then the normal `-S` transaction, then the launch. With `--noconfirm` or no TTY: exit 2 naming `sruman -S sniper`. `auto_install = true` installs without asking. |
+| D13 | **Runner and modes.** You want two ways to run a game: a fake home that keeps the game in its prefix (like Wine), and the real home and system with only the runtime's libraries on top. | **Settled 2026-11-22.** (1) `slr` is its own runner in libgameprofiles (`native`, `slr`, `wine`, `umu`, `proton`), not `native` + `[slr]`. (2) Two independent choices: the **home** is private when `prefix` is set (D11) and real otherwise; the **libraries** come from `[slr] mode`: `container` (default; today's pressure-vessel launch, the runtime's `/usr` replaces the system's) or `overlay` (no container: the host root and home, with the runtime's libraries first on `LD_LIBRARY_PATH`, the way `scout-ldlp` works today). Container + prefix is the fake home; overlay without prefix is the second use case. (3) In overlay mode, glibc (`libc.so.6`, `ld-linux*`, `libm`, `libpthread`, `libdl`, `librt`) and the GPU stack (Vulkan/GL loaders and drivers, `libdrm`, `libgbm`) always come from the host: the host's dynamic loader can't load an older glibc, and the drivers need the host's own libraries. `libstdc++.so.6` and `libgcc_s.so.1` come from whichever copy is newer, as Steam's scout runtime "pins" them; host Mesa needs the newer `libstdc++`. (4) Neither mode is a security sandbox: a container still sees the GPU, D-Bus, the Wayland/X11 sockets and shared paths. Real isolation (bubblewrap/landlock rules) would be a separate, later feature. (5) The libgameprofiles side (keys, file checks, warnings for settings a mode ignores) lands there first; sruman then implements overlay launching (Phase 3b). |
+| D14 | **Library overrides.** Like Wine's `dll_overrides`, a way to choose per library. | **Settled 2026-11-22.** `[slr.lib_overrides]`, overlay mode only (a warning in container mode: importing one host library into pressure-vessel isn't supported cleanly). Keys are sonames (`libSDL2-2.0.so.0`), values `runtime`, `host` or `newest`. The defaults are D13's: glibc and GPU drivers `host`, `libstdc++`/`libgcc_s` `newest`, everything else `runtime`. Overriding a glibc or driver library to `runtime` is a sruman error (it can't work), not a format error. The usual real use is `host` for a newer SDL (Wayland). |
 
 ---
 
-## CLI (paru-like)
+## CLI
 
-The grammar is pacman's: one **operation** (an uppercase flag), lowercase
-**modifiers** scoped to that operation, then targets. Short flags combine
-(`-Syu`, `-Scc`, `-Rdd`). A repeated modifier escalates, as in pacman.
+_Revised 2026-11-22 (D9): subcommands in lootrs' and gaki's style replace
+the pacman grammar. Notes written before that (steps 0–4.1) use the pacman
+spellings; the last table maps them._
 
-### Runtimes (package management)
+Plain verbs, one per action, with long options. Game commands use lootrs'
+names (`run`, `execute`, `stop`, `killall`, `status`, `list`, `check`,
+`logs`, `init`), profiles are a group like gaki's (`profiles list|show|…`),
+and runtime commands are top-level verbs, as in your sketch
+(`sruman install sniper`; `sruman build …` comes later with `SLRBUILD`).
+Bare `sruman` prints the help.
 
-| Command                         | Does                                                                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `sruman`                        | `-Syu`                                                                                                                               |
-| `-S <rt>[=build]…`              | Install with dependencies. Transaction summary + `:: Proceed with installation? [Y/n]`. `--needed` skips installed ones; `-w` downloads only |
-| `-Sy` / `-Syy`                  | Refresh the sync index (pointer `.txt`s, `VERSION.txt`, `SHA256SUMS`, manifests); `-yy` forces it even if `update-timestamp.txt` is unchanged |
-| `-Su` / `-Syu [rt…]`            | Upgrade installed runtimes (all, or the named ones), with the package changelog from the manifest diff; `-uu` allows downgrading to the channel's build |
-| `-Ss [regex]`                   | Search runtime names/descriptions; with `--pkg`, search the package manifests (`-Ss --pkg mesa`)                                      |
-| `-Si <rt>[=build]`              | Remote info: build, channel, archive size, installed size, os-release, date, `depends`; `-ii` adds the full package list              |
-| `-Sl [rt]`                      | List available builds (the versioned dirs) and mark the installed ones                                                                |
-| `-Sc` / `-Scc`                  | Clean the download cache of archives for uninstalled builds / all archives; also removes installed builds beyond `keep_versions` that aren't pinned or in use |
-| `-Q [rt]`                       | Installed runtimes as `name build` (`-Qq` gives names only)                                                                           |
-| `-Qi <rt>`                      | Installed info, including **Required By**: the profiles that use it, and whether it's running now                                    |
-| `-Qu`                           | Upgradable runtimes, `old -> new`                                                                                                     |
-| `-Qk` / `-Qkk`                  | Verify an installed build: files present / content hashes (against the build's own `mtree.txt.gz`: type, mode, size, sha256) |
-| `-Ql <rt>`                      | List files                                                                                                                            |
-| `-R <rt>[=build]…`              | Remove. Refuses if a profile uses it or it's running; `-d` skips the profile check; `-dd` also removes builds that are in use (with a warning) |
-| `-U <archive\|dir>`             | Install from a local archive or directory (Steam's `steamapps/common/SteamLinuxRuntime_sniper`, umu's `steamrt3`). `--link` registers a directory in place without copying it, and sruman never deletes linked builds |
+### Runtimes
 
-### Profiles, prefixes, running
+| Command                                   | Does                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `sync [--force]`                          | Refresh the sync index (pointer `.txt`s, `VERSION.txt`, `SHA256SUMS`, manifests); `--force` even if `update-timestamp.txt` is unchanged |
+| `install <rt>[=build]… [--needed] [--download-only]` | Install with dependencies. Transaction summary + `Proceed with installation? [Y/n]`                                          |
+| `upgrade [rt…] [--sync] [--allow-downgrade]` | Upgrade installed runtimes (all, or the named ones), with the package changelog from the manifest diff; `--sync` refreshes first |
+| `outdated`                                | Upgradable runtimes, `old -> new`                                                                                                     |
+| `remove <rt>[=build]… [--force]`          | Remove. Refuses if a profile uses it or it's running; `--force` skips the profile check (never removes a build in use)               |
+| `search [regex] [--packages]`             | Search runtime names/descriptions, or with `--packages` the package manifests (`search --packages mesa`)                              |
+| `info <rt>[=build] [--packages]`          | Build, channel, sizes, os-release, date, `depends`, and if installed **Required by** (profiles, running games); `--packages` lists packages |
+| `runtimes [--quiet]`                      | Installed runtimes as `name build` (`--quiet`: names only)                                                                            |
+| `builds <rt>`                             | Available builds on the server, installed ones marked                                                                                 |
+| `files <rt>`                              | List an installed build's files                                                                                                       |
+| `verify <rt> [--full]`                    | Check an installed build: files present / content hashes (`mtree.txt.gz`)                                                             |
+| `clean [--all]`                           | Download cache of uninstalled builds / all archives; builds beyond `keep_versions` that aren't pinned or in use                      |
+| `import <archive\|dir> [--link]`          | Install from a local archive or directory (Steam's `SteamLinuxRuntime_sniper`, umu's `steamrt3`); `--link` registers it in place     |
 
-| Command                                 | Does                                                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `sruman [-p <P>] <game\|path> [args…]` | Run (shorthand for `-X`). Every bare target runs, resolved as in D10. A game uses its own profile (`-p` overrides it); a path uses `-p` or `default_profile`. `args` follow the game's own `args` |
-| `-X [-p P] <game\|path> [args…]`        | Run. Detaches by default; `--wait` streams output and returns the game's exit code; `--debug` turns on verbose runtime logging |
-| `-X -p P --shell`                       | Interactive shell inside the profile's runtime and prefix                                                   |
-| `-Xs` / `-Xk <game\|P\|pid>` / `-Xkk`   | Running games and sessions (status) / stop one (SIGTERM → timeout → SIGKILL) / stop all                      |
-| `-G`                                    | List games (name, profile, runtime, running), lootrs' `list`                                                 |
-| `-Gi <game>`                            | Show a game: resolved exe, cwd, profile, runtime build, prefix, merged env, latest run log                   |
-| `-Gk [game]`                            | Check games (validation + preflight, including their profiles), lootrs' `check <game>`                      |
-| `-Ge`                                   | Open `games.toml` in `$EDITOR`, then validate it                                                             |
-| `-Gl <game>`                            | Print the latest run log (`--path` prints its path), lootrs' `logs`                                          |
-| `-P`                                    | List profiles (name, runtime, prefix, in use)                                                                |
-| `-Pi <P>`                               | Show a profile: resolved runtime build, prefix and its state, other profiles sharing the prefix              |
-| `-Pk [P]`                               | Check profiles (validation + preflight: runtime installed, entry point, paths). This is lootrs' `check`      |
-| `-Pn <P> -r <rt> [--prefix <dir>]`      | New profile file + prefix init. An existing `--prefix` is reused, not reset. This is lootrs' `init`         |
-| `-Pe <P>`                               | Open the profile in `$EDITOR`, then validate it                                                              |
-| `-Pd <P>` / `-Pdd <P>`                  | Delete the profile file / also delete its prefix, unless another profile shares it or it's in use           |
-| `-D`                                    | Doctor: userns/bwrap, AppArmor userns restriction, the runtime's `steam-runtime-system-info`                 |
+### Games, profiles, running
 
-Global options: `--noconfirm`, `--color auto|always|never`, `-q`, `-v`/`-vv`,
-`--config <file>`, and `--json` on `-Q`, `-Qi`, `-P`, `-Pi`, `-G`, `-Gi`, `-Xs`, `-Sl`
-(for scripts and lootrs). Exit codes follow lootrs: `0` ok, `1` runtime
+| Command                                        | Does                                                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `run <game> [-p P] [--wait] [--debug] [-- args…]` | Run a game from `games.toml`. Detached by default; `--wait` streams output and returns its exit code   |
+| `execute -p P <path\|program> [--wait] [-- args…]` | Run an executable once with a profile (lootrs' `execute`); `-p` defaults to `default_profile`        |
+| `shell [-p P]`                                 | Interactive shell inside the profile's runtime and prefix                                                 |
+| `status`                                       | Running games and sessions                                                                                |
+| `stop <game\|profile\|pid>` / `killall`        | Stop one (SIGTERM → timeout → SIGKILL) / all                                                              |
+| `list`                                         | Games (name, profile, runtime, running)                                                                   |
+| `show <game>`                                  | Resolved exe, cwd, profile, runtime build, prefix, merged env, latest run log                            |
+| `check [game\|profile…]`                       | Validation + preflight of games and profiles (all without arguments)                                     |
+| `logs <game> [--path]`                         | Print the latest run log, or its path                                                                     |
+| `init <profile>`                               | Create or update the profile's prefix                                                                     |
+| `profiles list`                                | Profiles (name, runtime, mode, prefix, in use), implicit ones marked                                     |
+| `profiles show <P>`                            | Resolved runtime build, mode, prefix and its state, profiles sharing the prefix                           |
+| `profiles new <P> --runtime <rt> [--mode container\|overlay] [--prefix <dir>]` | New profile file, then `init`. An existing `--prefix` is reused, not reset          |
+| `profiles edit <P>` / `edit-games`             | Open the profile / `games.toml` in `$EDITOR`, then validate it                                            |
+| `profiles delete <P> [--prefix]`               | Delete the profile file; `--prefix` also deletes its prefix, unless shared or in use                     |
+| `doctor`                                       | User namespaces/bwrap, AppArmor userns restriction, the runtime's `steam-runtime-system-info`            |
+
+Global options: `-y`/`--yes` (no prompts), `--color auto|always|never`,
+`-q`, `-v`/`-vv`, `--config <file>`, and `--json` on `runtimes`, `info`,
+`builds`, `outdated`, `list`, `show`, `profiles list|show` and `status` (for
+scripts, lootrs and gaki). Exit codes follow lootrs: `0` ok, `1` runtime
 failure, `2` invalid input or config, `3` not running, `4` busy (game
 already running, prefix or build in use).
 
-Output follows pacman: `::` section headers, `resolving dependencies...`,
-`Runtimes (2)  soldier-2.0.20261021.266042  scout-1.0.20261021.266054`,
-`Total Download Size`/`Total Installed Size`, one progress bar per download,
-and `warning:`/`error:` prefixes. Colors only when stdout is a TTY, unless
-`--color` says otherwise.
+Output keeps the transaction look for installs and upgrades (resolving
+dependencies, `Runtimes (2)  soldier-2.0.…  scout-1.0.…`, total download and
+installed size, one progress bar per download), and `warning:`/`error:`
+prefixes elsewhere. Colors only on a TTY unless `--color` says otherwise.
 
-**Parsing:** clap derive, with each operation a `bool` short flag in one
-exclusive `ArgGroup` and modifiers as `ArgAction::Count`. The `settings/`
-resolver turns the flag soup into a typed `Operation` enum (`Sync { refresh: u8, upgrade: u8, search, info: u8, … }`)
-and rejects modifiers that don't belong to the chosen operation, with a
-pacman-like message (`error: invalid option '-k' for -S`). Arguments after the
-executable pass through untouched (`trailing_var_arg`). Nothing below
-`settings/` sees clap types.
+**Parsing:** clap derive subcommands, as in lootrs and gaki. Each command is
+an enum variant with its own options, so clap itself rejects options that
+don't belong, and `settings/` only merges flags, `config.toml` and defaults
+into `Settings { command: Command, … }`. Arguments after `--` (or after the
+target of `run`/`execute`) pass through untouched. Nothing below `settings/`
+sees clap types.
 
----
+### Old spelling → new
+
+| pacman style                        | Now                               |
+| ----------------------------------- | --------------------------------- |
+| `sruman` / `-Syu`                   | `help` / `upgrade --sync`         |
+| `-S` / `-Sy` / `-Syy` / `-Su`       | `install` / `sync` / `sync --force` / `upgrade` |
+| `-Ss` / `-Si` / `-Sl` / `-Sc` / `-Scc` | `search` / `info` / `builds` / `clean` / `clean --all` |
+| `-Q` / `-Qi` / `-Qu` / `-Qk` / `-Qkk` / `-Ql` | `runtimes` / `info` / `outdated` / `verify` / `verify --full` / `files` |
+| `-R` / `-Rd` / `-U`                 | `remove` / `remove --force` / `import` |
+| `sruman <game>` / `sruman <path>`, `-X` | `run <game>` / `execute <path>` |
+| `-X --shell` / `-Xs` / `-Xk` / `-Xkk` | `shell` / `status` / `stop` / `killall` |
+| `-G` / `-Gi` / `-Gk` / `-Ge` / `-Gl` | `list` / `show` / `check` / `profiles edit-games` / `logs` |
+| `-P` / `-Pi` / `-Pk` / `-Pn` / `-Pe` / `-Pd` / `-Pdd` | `profiles list` / `profiles show` / `check` / `profiles new` / `profiles edit` / `profiles delete` / `… --prefix` |
+| `-D` / `--noconfirm`                | `doctor` / `--yes`                |
 
 ## Profiles and prefixes (libgameprofiles format)
 
@@ -285,7 +305,7 @@ executable pass through untouched (`trailing_var_arg`). Nothing below
 
 ```toml
 name = "scout"                                   # must equal the file stem
-runner = "native"                                # sruman runs `native` profiles with [slr]
+runner = "slr"                                   # D13; until step 3b.1: "native"
 prefix = "~/.local/share/sruman/prefixes/indie"  # optional; shared by any profile that names it
 # runner_args = []                               # passed to the runtime entry point
 # wrappers = ["gamemoderun", "mangohud"]         # outside the container, like Steam's %command%
@@ -296,8 +316,12 @@ prefix = "~/.local/share/sruman/prefixes/indie"  # optional; shared by any profi
 
 [slr]                                            # libgameprofiles::SlrSection
 runtime = "scout"                                # or "scout=1.0.20261021.266054" to pin
-# filesystems_rw = ["~/Games"]
+# mode = "container"                             # D13: container | overlay
+# filesystems_rw = ["~/Games"]                   # container only
 # filesystems_ro = []
+
+# [slr.lib_overrides]                            # D14, overlay only
+# "libSDL2-2.0.so.0" = "host"                    # runtime | host | newest
 ```
 
 - **One format for three tools:** profiles are
@@ -306,21 +330,28 @@ runtime = "scout"                                # or "scout=1.0.20261021.266054
   stem is the name, names are validated (`[A-Za-z0-9._-]+`), validation
   collects every `Issue` instead of failing fast, and unknown or misplaced
   fields warn instead of failing. sruman adds its own checks
-  (`model::validate_profile`): `runner = "native"`, a required `[slr]`, and a
-  runtime the catalog knows.
+  (`model::validate_profile`): the `slr` runner (`native` + `[slr]` until
+  step 3b.1), a required `[slr]`, and a runtime the catalog knows.
 - **Implicit profiles:** every catalog runtime name (`sniper`, `scout`, …)
-  works as a profile with defaults and no prefix, so `sruman -p sniper ./game`
-  works without any file. A real file with the same name overrides it.
+  works as a profile with defaults and no prefix, so
+  `sruman execute -p sniper ./game` works without any file. A real file with the same name overrides it.
   `default_profile` in `config.toml` is used when `-p` is omitted.
 - **Prefixes** are plain directories referenced by path, so any number of
   profiles can share one (a scout profile and a sniper profile both using
   `prefixes/indie`). `prefix::ensure` runs on every launch, as in lootrs:
   it creates `home/` and the XDG skeleton, then reconciles `<prefix>/.sruman.toml`
   (sruman version, home mode, runtimes last used). Locking is a shared flock
-  while a game runs and an exclusive one for `-Pdd` or a prefix reset, so a
+  while a game runs and an exclusive one for `profiles delete --prefix` or a prefix reset, so a
   busy prefix gives exit 4. The lock files live in `$XDG_RUNTIME_DIR/sruman/`,
   keyed by a hash of the prefix path (lootrs' scheme).
 - **No prefix** means the game sees the real home, the same as Steam's default.
+- **Two independent choices** (D13): the home (`prefix` set: private
+  `<prefix>/home`; unset: the real home) and the libraries (`mode`:
+  `container`, the runtime's `/usr` in a pressure-vessel container; or
+  `overlay`, the host system with the runtime's libraries first on
+  `LD_LIBRARY_PATH`). Your two use cases are "container + prefix" (a fake
+  home, like a Wine prefix) and "overlay, no prefix" (real home and system,
+  only the runtime's libraries on top).
 
 ## Games (lootrs model)
 
@@ -394,7 +425,7 @@ sruman/
     src/
       main.rs
       cli/ config/ settings/ logger/ utils/
-      output/    # pacman-style printer: colors, ::, tables, prompts, progress bars, --json
+      output/    # printer: colors, tables, transaction summaries, prompts, progress bars, --json
       app/
         commands/    # one handler per operation: sync, query, remove, upgrade, profile, games, exec, doctor
         supervisor/  # spawn LaunchSpec, setsid, detach/--wait, run logs
@@ -874,6 +905,42 @@ Rules:
       expected i386 warning on this host; scout-ldlp's tools work through
       `run.sh`.
 
+### Phase 3b — the `slr` runner and overlay mode (D13, D14)
+
+Needs libgameprofiles' `slr` runner, `[slr] mode` and `[slr.lib_overrides]`
+first (in that repo: keys, file checks, examples). Library work, so it comes
+before the binary, and Phase 4's commands get modes for free.
+
+- [ ] **3b.1** Adopt the new format: `model::slr` accepts `runner = "slr"`
+      (and refuses `native` + `[slr]` with a hint to change the runner),
+      implicit profiles and `new_profile` use it, fixtures and
+      `examples/profiles` are updated. The `ldlp` warnings in
+      `validate_profile` that libgameprofiles now gives for `mode = "overlay"`
+      are removed here.
+- [ ] **3b.2** Overlay library folders. `LD_LIBRARY_PATH` works per
+      directory, so sruman builds, per build and set of overrides, a folder
+      of symlinks to the runtime's libraries (64- and 32-bit), leaving out
+      glibc and the GPU stack and linking the newer of host and runtime for
+      `libstdc++`/`libgcc_s` (what Steam's scout `setup.sh` does with its
+      pinned libraries). Built atomically under the build's lock, cached by a
+      hash of build + overrides, removed with the build. Tests on fake
+      runtimes with fake host library dirs.
+- [ ] **3b.3** Overlay launch: `launch::wrap` for `mode = "overlay"` runs the
+      game directly (no pressure-vessel) with the overlay folders first on
+      `LD_LIBRARY_PATH` (before the profile's own), `HOME`/`XDG_*` redirected
+      when there's a `prefix` (D11's fallback), wrappers, env layering, tags
+      and prefix locks as in container mode. Preflight: the host's glibc must
+      be at least the runtime's (else an error naming both versions).
+- [ ] **3b.4** Fold `scout-ldlp` into `scout` (D7): overlay on scout uses the
+      LD_LIBRARY_PATH runtime the scout archive already bundles (its
+      `run.sh`), so no second download. `scout-ldlp` stays a catalog alias
+      for one release, with a deprecation warning. Decide whether `depends`
+      (scout → soldier) applies only to container mode.
+- [ ] **3b.5** `[slr.lib_overrides]` (D14): per-soname `runtime`, `host` or
+      `newest` over the defaults; `runtime` for a glibc or driver library is
+      an error in `validate_profile`. `doctor` and `profiles show` print
+      which copy each overridden library resolves to.
+
 ### Phase 4 — the `sruman` binary
 
 - [x] **4.1** `cli/`: the pacman grammar above (operations group, counted
@@ -900,15 +967,22 @@ Rules:
       target for tests, and features `json` and `diag` (default on). 48
       tests: the full grammar from argv, config merging, errors naming the
       file and key.
+- [ ] **4.1b** Redo 4.1 for D9's subcommands: a clap `Command` enum with
+      one variant per command and its own options (see "CLI"), `settings/`
+      reduced to merging flags, `config.toml` and defaults. Rewrite the parse
+      tests from the CLI tables, keep the config tests. Update the user-facing
+      hints in `libsruman` that name pacman commands (`sruman -S`, `-Sy`,
+      `-Qkk`, `-D`; ten strings) and the README quick start.
 - [ ] **4.2** `logger/`: tracing to stderr (`-v`) and a daily file, as in
       lootrs.
-- [ ] **4.3** `output/`: the pacman look (`::`, `resolving dependencies...`,
+- [ ] **4.3** `output/`: the transaction look (`resolving dependencies...`,
       transaction table, sizes, `[Y/n]` prompts honoring
       `--noconfirm`, multi-bar download progress on stderr, colors with TTY
       detection) and `--json` serializers. Hand-rolled unless a maintained,
       light crate clearly pays for itself (§7.2).
-- [ ] **4.4** `app/commands`: one module per operation (sync, query,
-      remove, upgrade-local, profile, exec, doctor). Thin over `libsruman`.
+- [ ] **4.4** `app/commands`: one module per group of commands (runtimes:
+      sync/install/upgrade/remove/search/info/…; games and running;
+      profiles; doctor). Thin over `libsruman`.
       `exec` handles D12: an install prompt, then the launch.
 - [ ] **4.5** `app/supervisor`: spawn the `LaunchSpec` with `setsid`,
       detached by default or `--wait`. Per-run logs in lootrs' runlog format
@@ -920,13 +994,13 @@ Rules:
       follow the open file, so even a `CLOEXEC` fd stays locked in the child
       until its exec, and an inherited non-`CLOEXEC` one for the whole run.
       Only the `BuildHold` and `PrefixLock` fds are passed on purpose.
-- [ ] **4.6** `tests/cli.rs`: parse matrix, `-Pk`/`-Gk` on examples, and
-      `sruman <game>` / `sruman <path>` against a fake runtime whose `run` is a script echoing argv/env, run
-      against the fixture HTTP server from 2.6 for `-S`/`-Syu`.
+- [ ] **4.6** `tests/cli.rs`: parse matrix, `check` on examples, and
+      `sruman run <game>` / `sruman execute <path>` (both modes) against a fake runtime whose `run` is a script echoing argv/env, run
+      against the fixture HTTP server from 2.6 for `install`/`upgrade --sync`.
 
 ### Phase 5 — docs, audit and release
 
-- [ ] **5.1** `docs/USAGE.md` (operations reference in pacman-manual style,
+- [ ] **5.1** `docs/USAGE.md` (command reference,
       games, profiles, shared prefixes, game-vs-path resolution, wrappers,
       logs, exit codes) and
       `docs/RUNTIMES.md` (suites, channels, server layout, apt vs images,
@@ -938,8 +1012,11 @@ Rules:
       `#![warn(missing_docs)]` on `libsruman`.
 - [ ] **5.4** Manual checks: one game per runtime (Hollow Knight on scout, a
       sniper-era title); two profiles sharing a prefix; upgrade while a game
-      runs (the old build stays, `-Sc` skips it); `-U --link` of Steam's
-      sniper.
+      runs (the old build stays, `clean` skips it); `import --link` of
+      Steam's sniper; the same native game in container mode with a prefix
+      (saves land in `<prefix>/home`) and in overlay mode without one (saves
+      in the real home, `LD_DEBUG=libs` shows runtime libraries first and
+      host glibc and Mesa); an SDL `host` override.
 - [ ] **5.5** **Automated audit.** Tooling and tests that run on every audit
       pass, not a one-off read-through. Wire it into
       `.github/workflows/audit.yml` (weekly schedule, on tags,
@@ -1042,31 +1119,29 @@ Rules:
       and all §8 gates green at the three feature levels, and update the
       baselines in `docs/AUDIT.md`.
 - [ ] **5.7** Tag 0.1.0. Publish `libsruman`, then `sruman`. Consider an
-      AUR `PKGBUILD` (fitting for a paru-like tool).
+      AUR `PKGBUILD`.
 
 ---
 
 ## Downstream integration (later; recorded here to check the API against)
 
-- **lootrs**: add a `slr` feature to `liblootrs` → `libsruman`. `Profile`
-  gains `slr: Option<libsruman::model::SlrSection>`, valid on `native` (a
-  warning elsewhere). Its `prefix` field, today ignored for native, then means
-  the same thing as in sruman. `launch::prepare`'s native runner calls
-  `libsruman::launch::wrap`, and `lootrs check` calls
-  `libsruman::launch::preflight`. Runtime management stays in `sruman`, or
-  lootrs reuses `Transaction` behind its own command.
-- **gaki**: it gets `[slr]` through `liblootrs::model` (its D9). Native Steam
-  games can run on a sruman-managed runtime behind a `slr` feature, with
-  installs via `spawn_blocking` and gaki's `reqwest` as the `Fetch` (D2).
-  Later, Proton could launch on a sruman-managed sniper instead of Steam's copy.
+_Revised 2026-11-22._ Profiles are libgameprofiles' (D1), so lootrs and gaki
+already read `runner = "slr"` profiles; they refuse to launch them for now.
+Integration comes after sruman's 0.1.0, through the **command line**, not by
+linking `libsruman`: the other tools stay free of sruman's dependencies and
+release cycle, and the CLI with `--json` is the stable interface.
+
+- **gaki**: optionally run native Steam games through sruman: a `slr`
+  profile is launched as `sruman execute -p <profile> --wait -- <exe> <args>`.
+  Later, Steam itself (for DRM checks) in overlay mode.
+- **lootrs**: optionally launch `slr` profiles through `sruman`, and Steam
+  games through `gaki-cli`, both as external runners.
 - **One store for all three**: `$XDG_DATA_HOME/sruman/runtimes` and the
   flock protocol mean a runtime downloads once and no tool removes a build
   another is running.
 
-While building Phases 1–3, check that lootrs could integrate without
-`libsruman` depending on anything of lootrs', without enabling a default
-feature it doesn't want, and without copying code. If not, fix the API here
-first.
+Linking `libsruman` stays possible (it has no CLI or config discovery), so
+the API should keep working without the binary's features.
 
 ## Open questions
 
