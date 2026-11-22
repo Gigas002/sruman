@@ -18,13 +18,22 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+jiff.workspace = true
 libsruman.workspace = true
+rustix.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 toml.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# libsruman's fixture image server and archive builder (tests/cli.rs).
+lzma-rust2 = { workspace = true, features = ["encoder"] }
+sha2.workspace = true
+tar.workspace = true
 tempfile.workspace = true
 
 [features]

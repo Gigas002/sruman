@@ -12,7 +12,7 @@ repository = "https://github.com/Gigas002/sruman"
 version = "0.1.0"
 
 [workspace.dependencies]
-# CLI parsing (sruman): pacman grammar through derive + counted flags
+# CLI parsing (sruman): derive subcommands + counted flags
 clap = { version = "4", features = ["derive"] }
 # xz: pure Rust, with a multithreaded block decoder (Valve's archives are
 # multi-block: ~1.1 s vs ~9 s single-threaded for sniper); no C build.
@@ -27,13 +27,23 @@ flate2 = "1"
 tar = { version = "0.4", default-features = false }
 rustix = { version = "1", features = ["fs", "process"] }
 serde = { version = "1", features = ["derive"] }
+# Local time for run-log names, headers and lines (sruman), as in lootrs.
+jiff = "1"
 # system-info's JSON report (libsruman `diag`), `--json` (sruman)
 serde_json = "1"
-# SHA-256 for -Qkk (mtree digests) and archive checks
+# SHA-256 for `verify --full` (mtree digests) and archive checks
 sha2 = "0.11"
 tempfile = "3"
 thiserror = "2"
 toml = "1"
+# App log (sruman): a daily file plus stderr with -v, as in lootrs.
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+    "registry",
+    "std",
+] }
 # HTTP for the default `Fetch`; rustls on ring (no AWS-LC C build), bundled
 # webpki roots, no gzip (archives are fetched byte-exact, with Range).
 ureq = { version = "3", default-features = false, features = ["rustls"] }

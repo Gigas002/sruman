@@ -117,7 +117,7 @@ pub struct Run {
     pub args: Vec<String>,
     /// `-p`: another profile for this run.
     pub profile: Option<String>,
-    pub wait: bool,
+    pub mode: LaunchMode,
     pub debug: bool,
 }
 
@@ -130,8 +130,30 @@ pub struct Execute {
     pub args: Vec<String>,
     /// `-p`, else `default_profile` (required after [`Command::resolve`]).
     pub profile: Option<String>,
-    pub wait: bool,
+    pub mode: LaunchMode,
     pub debug: bool,
+}
+
+/// How `run` and `execute` stay with the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LaunchMode {
+    /// Start a detached supervisor and return (the default).
+    #[default]
+    Detach,
+    /// `--wait`: supervise here, stream the output, exit with its code.
+    Wait,
+    /// The detached supervisor itself (hidden `--supervised`).
+    Supervised,
+}
+
+impl LaunchMode {
+    pub fn new(wait: bool, supervised: bool) -> Self {
+        match (wait, supervised) {
+            (_, true) => Self::Supervised,
+            (true, false) => Self::Wait,
+            (false, false) => Self::Detach,
+        }
+    }
 }
 
 /// `profiles …`.

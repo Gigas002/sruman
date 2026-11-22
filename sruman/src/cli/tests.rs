@@ -216,7 +216,7 @@ fn running() {
             game: "hollow-knight".into(),
             args: Vec::new(),
             profile: None,
-            wait: false,
+            mode: LaunchMode::Detach,
             debug: false,
         })
     );
@@ -229,7 +229,7 @@ fn running() {
             game: "hk".into(),
             args: strings(&["-x", "--wait"]),
             profile: Some("scout".into()),
-            wait: true,
+            mode: LaunchMode::Wait,
             debug: true,
         })
     );
@@ -239,7 +239,7 @@ fn running() {
             target: "./setup.sh".into(),
             args: strings(&["--silent"]),
             profile: Some("sniper".into()),
-            wait: false,
+            mode: LaunchMode::Detach,
             debug: false,
         })
     );
@@ -249,7 +249,7 @@ fn running() {
             target: "glxgears".into(),
             args: Vec::new(),
             profile: None,
-            wait: true,
+            mode: LaunchMode::Wait,
             debug: false,
         })
     );
@@ -421,6 +421,7 @@ fn doctor() {
 #[cfg(feature = "json")]
 #[test]
 fn json_only_where_the_plan_lists_it() {
+    #[cfg_attr(not(feature = "download"), allow(unused_mut))]
     let mut with_json = vec![
         &["info", "sniper"][..],
         &["runtimes"],
@@ -437,6 +438,7 @@ fn json_only_where_the_plan_lists_it() {
         args.push("--json");
         assert!(cmd(&args).1, "{args:?}");
     }
+    #[cfg_attr(not(feature = "download"), allow(unused_mut))]
     let mut without = vec![
         &["remove", "x"][..],
         &["verify"],

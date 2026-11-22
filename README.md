@@ -10,8 +10,9 @@ wine game.exe                         # Windows game in a wine prefix
 sruman execute -p scout ./game.x86_64 # native game in a Steam Linux Runtime "prefix"
 ```
 
-> **Status: early development.** Nothing below works yet. The design is in
-> [`docs/PLAN.md`](docs/PLAN.md); this README describes where it's going.
+> **Status: early development.** The commands below work; `provide-umu`
+> and custom runtimes are still to come. The design is in
+> [`docs/PLAN.md`](docs/PLAN.md).
 
 ## What it does
 
@@ -34,7 +35,7 @@ sruman execute -p scout ./game.x86_64 # native game in a Steam Linux Runtime "pr
   [lootrs](https://github.com/Gigas002/lootrs) and
   [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.
 
-## Planned usage
+## Usage
 
 ```sh
 sruman upgrade --sync                     # refresh the index and upgrade installed runtimes
@@ -50,7 +51,10 @@ sruman execute -p scout ./game.x86_64     # run an executable with a profile
 sruman profiles list / show scout         # profiles
 sruman profiles new indie -r sniper --mode overlay   # a profile on your system, no container
 sruman list / check                       # games; check games and profiles
+sruman run hollow-knight --wait           # run in the foreground, with its output and exit code
+sruman logs hollow-knight                 # the latest run log
 sruman status / stop hollow-knight        # running games / stop one
+sruman shell -p scout                     # a shell in the profile's runtime and prefix
 sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```
 

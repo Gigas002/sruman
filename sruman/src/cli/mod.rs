@@ -16,7 +16,7 @@ use crate::{
     config::ColorChoice,
     settings::{
         CliOptions,
-        command::{Command as Cmd, Execute, Profiles, Run},
+        command::{Command as Cmd, Execute, LaunchMode, Profiles, Run},
     },
 };
 
@@ -197,6 +197,9 @@ pub enum Command {
         /// Verbose runtime logging for this run.
         #[arg(long)]
         debug: bool,
+        /// Internal: run as the detached supervisor.
+        #[arg(long, hide = true, conflicts_with = "wait")]
+        supervised: bool,
         /// Extra arguments appended to the game's own.
         #[arg(last = true)]
         args: Vec<String>,
@@ -214,6 +217,9 @@ pub enum Command {
         /// Verbose runtime logging for this run.
         #[arg(long)]
         debug: bool,
+        /// Internal: run as the detached supervisor.
+        #[arg(long, hide = true, conflicts_with = "wait")]
+        supervised: bool,
         /// Arguments for the executable.
         #[arg(last = true)]
         args: Vec<String>,
@@ -458,12 +464,13 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
             profile,
             wait,
             debug,
+            supervised,
             args,
         } => plain(Cmd::Run(Run {
             game,
             args,
             profile,
-            wait,
+            mode: LaunchMode::new(wait, supervised),
             debug,
         })),
         Command::Execute {
@@ -471,12 +478,13 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
             target,
             wait,
             debug,
+            supervised,
             args,
         } => plain(Cmd::Execute(Execute {
             target,
             args,
             profile,
-            wait,
+            mode: LaunchMode::new(wait, supervised),
             debug,
         })),
         Command::Shell { profile, debug } => plain(Cmd::Shell { profile, debug }),

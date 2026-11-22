@@ -502,6 +502,16 @@ fn join_paths(field: &str, list: &[PathBuf], problems: &mut Vec<String>) -> Opti
     Some(joined)
 }
 
+/// Paths pressure-vessel reserves for the container: the runtime's `/usr`
+/// (and the merged-usr links into it), `/etc`, `/app` and the kernel's.
+fn container_owns(path: &Path) -> bool {
+    const RESERVED: [&str; 12] = [
+        "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/app", "/proc",
+        "/sys", "/dev",
+    ];
+    path == Path::new("/") || RESERVED.iter().any(|root| path.starts_with(root))
+}
+
 fn push_unique(list: &mut Vec<PathBuf>, path: PathBuf) {
     if !list.contains(&path) {
         list.push(path);
@@ -590,13 +600,19 @@ pub fn wrap(
     let container = runtimes.host.as_ref().unwrap_or(build);
     let mut rw: Vec<PathBuf> = Vec::new();
     let mut ro: Vec<PathBuf> = Vec::new();
+    // The executable's directory and the cwd, unless the container
+    // provides that path itself (`/usr/bin/…`): pressure-vessel refuses to
+    // share those and warns.
     let program = PathBuf::from(&native.program);
     if program.is_absolute()
         && let Some(dir) = program.parent()
+        && !container_owns(dir)
     {
         push_unique(&mut rw, dir.to_path_buf());
     }
-    push_unique(&mut rw, native.cwd.clone());
+    if !container_owns(&native.cwd) {
+        push_unique(&mut rw, native.cwd.clone());
+    }
     if runtimes.entry == Entry::ScoutOnSoldier {
         // The scout entry point keeps its runtime copy in the scout build.
         push_unique(&mut rw, build.dir.clone());

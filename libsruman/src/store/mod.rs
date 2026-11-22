@@ -56,7 +56,7 @@ pub enum StoreError {
         "runtime `{name}` build {build} is not installed; install it with `sruman install {name}={build}`"
     )]
     BuildMissing { name: String, build: BuildId },
-    #[error("{name} {build} is in use by a running game; stop it first, or force the removal")]
+    #[error("{name} {build} is in use by a running game; stop it first")]
     InUse { name: String, build: BuildId },
     #[error("{name} {build} is already installed")]
     AlreadyInstalled { name: String, build: BuildId },

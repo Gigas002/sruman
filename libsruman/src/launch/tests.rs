@@ -467,6 +467,36 @@ fn wrap_is_usable_on_its_own() {
     assert_eq!(spec.env["PRESSURE_VESSEL_FILESYSTEMS_RW"], "/opt/game");
 }
 
+#[test]
+fn container_paths_are_not_shared() {
+    let w = World::new();
+    w.install("sniper", "3.0.1");
+    let profile = new_profile("p", &"sniper".parse().unwrap());
+    // `/usr/bin/true` from `/usr`: both are the container's own.
+    let native = NativeCommand {
+        program: "/usr/bin/true".into(),
+        args: Vec::new(),
+        env: BTreeMap::new(),
+        cwd: "/usr".into(),
+    };
+    let plan = wrap(
+        native,
+        profile.slr.as_ref().unwrap(),
+        &profile,
+        None,
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
+    let spec = plan.spec(&[]);
+    assert!(
+        !spec.env.contains_key("PRESSURE_VESSEL_FILESYSTEMS_RW"),
+        "{:?}",
+        spec.env
+    );
+    assert!(container_owns(Path::new("/lib64/x")) && container_owns(Path::new("/")));
+    assert!(!container_owns(Path::new("/opt/game")) && !container_owns(Path::new("/libfoo")));
+}
+
 /// Runs a command in a real runtime: the prefix home receives the writes,
 /// and the builds and prefix stay locked exactly while it runs. Either
 /// `SRUMAN_REAL_BUILD=<extracted container build>` (linked as sniper), or

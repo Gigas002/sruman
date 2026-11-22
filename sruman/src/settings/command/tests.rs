@@ -13,7 +13,7 @@ fn execute(target: &str, profile: Option<&str>) -> Command {
         target: target.into(),
         args: vec!["-x".into()],
         profile: profile.map(str::to_owned),
-        wait: false,
+        mode: LaunchMode::Detach,
         debug: false,
     })
 }

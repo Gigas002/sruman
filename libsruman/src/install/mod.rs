@@ -8,6 +8,7 @@
 //! come first, so a failure never leaves a runtime without what it needs.
 
 use std::{
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -134,9 +135,12 @@ pub struct Skipped {
     pub reason: SkipReason,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxOptions {
+    /// The channel of runtimes not in `channels`.
     pub channel: Channel,
+    /// Per-runtime channels (`[channels] sniper = "beta"`).
+    pub channels: BTreeMap<String, Channel>,
     pub arch: Arch,
     /// `-w`: download and verify into the cache, install nothing.
     pub download_only: bool,
@@ -147,9 +151,15 @@ impl TxOptions {
     pub fn new() -> Result<Self, InstallError> {
         Ok(Self {
             channel: Channel::Stable,
+            channels: BTreeMap::new(),
             arch: Arch::current().ok_or(InstallError::UnsupportedArch)?,
             download_only: false,
         })
+    }
+
+    /// The channel `runtime` follows.
+    pub fn channel_for(&self, runtime: &str) -> Channel {
+        self.channels.get(runtime).copied().unwrap_or(self.channel)
     }
 }
 
@@ -269,7 +279,7 @@ impl Transaction {
                 let index = sync_dir
                     .load(&def.name)
                     .ok_or_else(|| InstallError::NotSynced(def.name.clone()))?;
-                let build = channel_build(&index, &def.name, options.channel)?;
+                let build = channel_build(&index, &def.name, options.channel_for(&def.name))?;
                 tx.push(
                     fetch,
                     sync_dir,
@@ -289,7 +299,7 @@ impl Transaction {
                         let index = sync_dir
                             .load(&def.name)
                             .ok_or_else(|| InstallError::NotSynced(def.name.clone()))?;
-                        channel_build(&index, &def.name, options.channel)?
+                        channel_build(&index, &def.name, options.channel_for(&def.name))?
                     }
                 };
                 if installed.iter().any(|i| i.build == build) {
@@ -424,7 +434,7 @@ impl Transaction {
                 });
                 continue;
             };
-            let target = channel_build(&index, &def.name, options.channel)?;
+            let target = channel_build(&index, &def.name, options.channel_for(&def.name))?;
             let newer = current.as_ref().is_none_or(|c| target > *c);
             let older = current.as_ref().is_some_and(|c| target < *c);
             if !(newer || (older && upgrade.allow_downgrade)) {

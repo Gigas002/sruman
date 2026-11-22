@@ -226,7 +226,7 @@ fn hold_blocks_remove_unless_forced() {
     let err = store.remove(&lock, &build, false).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "sniper 3.0.1 is in use by a running game; stop it first, or force the removal"
+        "sniper 3.0.1 is in use by a running game; stop it first"
     );
     drop(hold);
     assert!(!store.in_use(&build));
