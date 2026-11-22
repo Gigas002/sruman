@@ -63,6 +63,7 @@ the command style (D9); pacman for the transaction output.
 
 - TUI or GUI. lootrs is the place for a games UI once it integrates `libsruman`.
 - Running Windows games: that's wine, Proton and umu (lootrs covers them).
+  sruman only provides the Steam Linux Runtimes umu runs Proton in (D15).
 - Replacing Steam: no login, no Steamworks bridge. Games that need a running
   Steam client still go through Steam or gaki.
 - Building runtimes from Debian packages (see D5).
@@ -210,6 +211,7 @@ verified the ones that depended on runtime behavior.
 | D12 | **Missing runtime at launch.** | **Settled: prompt.** On a TTY: `:: Runtime sniper is not installed. Install it now? [Y/n]`, then the normal `-S` transaction, then the launch. With `--noconfirm` or no TTY: exit 2 naming `sruman -S sniper`. `auto_install = true` installs without asking. |
 | D13 | **Runner and modes.** You want two ways to run a game: a fake home that keeps the game in its prefix (like Wine), and the real home and system with only the runtime's libraries on top. | **Settled 2026-11-22.** (1) `slr` is its own runner in libgameprofiles (`native`, `slr`, `wine`, `umu`, `proton`), not `native` + `[slr]`. (2) Two independent choices: the **home** is private when `prefix` is set (D11) and real otherwise; the **libraries** come from `[slr] mode`: `container` (default; today's pressure-vessel launch, the runtime's `/usr` replaces the system's) or `overlay` (no container: the host root and home, with the runtime's libraries first on `LD_LIBRARY_PATH`, the way `scout-ldlp` works today). Container + prefix is the fake home; overlay without prefix is the second use case. (3) In overlay mode, glibc (`libc.so.6`, `ld-linux*`, `libm`, `libpthread`, `libdl`, `librt`) and the GPU stack (Vulkan/GL loaders and drivers, `libdrm`, `libgbm`) always come from the host: the host's dynamic loader can't load an older glibc, and the drivers need the host's own libraries. `libstdc++.so.6` and `libgcc_s.so.1` come from whichever copy is newer, as Steam's scout runtime "pins" them; host Mesa needs the newer `libstdc++`. (4) Neither mode is a security sandbox: a container still sees the GPU, D-Bus, the Wayland/X11 sockets and shared paths. Real isolation (bubblewrap/landlock rules) would be a separate, later feature. (5) The libgameprofiles side (keys, file checks, warnings for settings a mode ignores) lands there first; sruman then implements overlay launching (Phase 3b). |
 | D14 | **Library overrides.** Like Wine's `dll_overrides`, a way to choose per library. | **Settled 2026-11-22.** `[slr.lib_overrides]`, overlay mode only (a warning in container mode: importing one host library into pressure-vessel isn't supported cleanly). Keys are sonames (`libSDL2-2.0.so.0`), values `runtime`, `host` or `newest`. The defaults are D13's: glibc and GPU drivers `host`, `libstdc++`/`libgcc_s` `newest`, everything else `runtime`. Overriding a glibc or driver library to `runtime` is a sruman error (it can't work), not a format error. The usual real use is `host` for a newer SDL (Wayland). |
+| D15 | **Runtimes for umu.** lootrs runs Proton through umu, and umu downloads and updates a Steam Linux Runtime by itself. You want every runtime handled by sruman only, and umu never to download one, not even the first time. | **Settled 2026-11-22.** umu stays lootrs' Proton launcher; sruman provides its runtimes, and becomes a hard dependency of lootrs' `umu` runner for every Proton that needs one. Checked against umu-launcher 1.4.4: (1) umu picks the runtime from the Proton's `toolmanifest.vdf`: `require_tool_appid` 1391110 is `steamrt2` (soldier), 1628350 `steamrt3` (sniper), 4183110 `steamrt4`; no `require_tool_appid` means umu's `host` mode, with no runtime at all (`proton-cachyos-native`). (2) It looks in `$UMU_FOLDERS_PATH/umu/<variant>` (default `$XDG_DATA_HOME/umu/<variant>`), and a folder counts as installed when it has `.installed.ok`; besides that marker, the folder is Valve's runtime unchanged plus a `umu -> _v2-entry-point` symlink. umu writes `umu.lock` and `umu-shim` next to it itself. (3) With `UMU_RUNTIME_UPDATE=0`, an installed runtime is never updated. (4) umu has no switch that stops it downloading a missing runtime, so the guarantee comes from lootrs never starting umu without one. **Design:** `sruman provide-umu <rt>` makes `$XDG_DATA_HOME/sruman/umu/<variant>/` a view of the build: symlinks to its top-level entries, plus the `umu` link and the marker, so the build itself stays unmodified (`_v2-entry-point` resolves itself with `readlink -f`, so it runs from the real build). lootrs, before every umu launch or `init`: reads `require_tool_appid` (none: host mode, sruman not involved), runs `sruman provide-umu --appid <id> --json`, sets `UMU_FOLDERS_PATH=$XDG_DATA_HOME/sruman` and `UMU_RUNTIME_UPDATE=0`, and holds the build's shared hold (`<build_id>.lock`, from the JSON) for the run, so `remove`, `clean` and upgrades never pull a build from under a umu game. If sruman can't provide the runtime, lootrs refuses the launch. A missing runtime follows D12 (prompt on a TTY, else exit 2 naming `sruman install`). Updates are sruman's `upgrade`; the next `provide-umu` repoints the view atomically unless that build is in use. What remains: umu still fetches the version file `latest-public-beta.txt` from repo.steampowered.com on each launch; nothing is downloaded into the runtime or written. A runtime umu already downloaded is taken over with `sruman import` (then delete umu's copy). |
 
 ---
 
@@ -243,6 +245,7 @@ Bare `sruman` prints the help.
 | `verify <rt> [--full]`                    | Check an installed build: files present / content hashes (`mtree.txt.gz`)                                                             |
 | `clean [--all]`                           | Download cache of uninstalled builds / all archives; builds beyond `keep_versions` that aren't pinned or in use                      |
 | `import <archive\|dir> [--link]`          | Install from a local archive or directory (Steam's `SteamLinuxRuntime_sniper`, umu's `steamrt3`); `--link` registers it in place     |
+| `provide-umu <rt>[=build] \| --appid <id> [--json]` | Make the runtime umu's `<variant>` folder under `$XDG_DATA_HOME/sruman/umu/` (D15); prints the folders path and the build's hold lock |
 
 ### Games, profiles, running
 
@@ -446,6 +449,7 @@ $XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman c
                                      /<name>/<build_id>.lock   # sruman's shared hold while a game runs
                                      /<name>/current -> <build_id>
 $XDG_DATA_HOME/sruman/prefixes/<name>/               # default prefix_root (prefix paths may be anywhere)
+$XDG_DATA_HOME/sruman/umu/<variant>/                 # D15: umu's view of a build (symlinks, `umu` link, `.installed.ok`); UMU_FOLDERS_PATH=$XDG_DATA_HOME/sruman
 $XDG_CACHE_HOME/sruman/sync/<name>.toml              # -Sy index: timestamp, channel → build; per build: archives (sha256, size), os-release
 $XDG_CACHE_HOME/sruman/sync/manifests/<name>-<build>.manifest.dpkg   # package list of each indexed build
 $XDG_CACHE_HOME/sruman/pkg/<name>-<build>-<archive>  # download cache (pacman's /var/cache/pacman/pkg); <file>.part while downloading
@@ -1002,6 +1006,17 @@ before the binary, and Phase 4's commands get modes for free.
 - [ ] **4.6** `tests/cli.rs`: parse matrix, `check` on examples, and
       `sruman run <game>` / `sruman execute <path>` (both modes) against a fake runtime whose `run` is a script echoing argv/env, run
       against the fixture HTTP server from 2.6 for `install`/`upgrade --sync`.
+- [ ] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
+      of their runtime (soldier 1391110, sniper 1628350, steamrt4 4183110)
+      for `--appid`. The view is built under the store lock in `.staging`
+      and renamed into place; a view whose build is held is left alone.
+      `--json` prints `{ folders, variant, build, hold }`. Before building
+      it, check with a real Proton that needs sniper or steamrt4 that umu
+      1.4.4 runs from the symlink view with `UMU_FOLDERS_PATH` set: online
+      (it may fetch only the version file; no download, no update) and
+      offline. If pressure-vessel refuses the view,
+      fall back to a hardlinked copy on the same filesystem. Tests with a fake
+      build: layout, marker, repointing after an upgrade, held builds kept.
 
 ### Phase 5 — docs, audit and release
 
@@ -1140,7 +1155,9 @@ release cycle, and the CLI with `--json` is the stable interface.
   profile is launched as `sruman execute -p <profile> --wait -- <exe> <args>`.
   Later, Steam itself (for DRM checks) in overlay mode.
 - **lootrs**: optionally launch `slr` profiles through `sruman`, and Steam
-  games through `gaki-cli`, both as external runners.
+  games through `gaki-cli`, both as external runners. Its `umu` runner gets
+  every Steam Linux Runtime from `sruman provide-umu` (D15): a hard
+  dependency for Protons that need one, so umu never downloads one itself.
 - **One store for all three**: `$XDG_DATA_HOME/sruman/runtimes` and the
   flock protocol mean a runtime downloads once and no tool removes a build
   another is running.
