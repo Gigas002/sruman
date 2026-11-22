@@ -195,7 +195,7 @@ verified the ones that depended on runtime behavior.
 
 | #   | Question | Default |
 | --- | -------- | ------- |
-| D1  | **Where does the profile model live?** A: in `libsruman`, with lootrs depending on it. B: in `liblootrs`, with sruman depending on it. | **Settled: A, with lootrs' shape.** With both GPL, B no longer has a license cost, but it would still pull lootrs' wine/umu/proton model (`dxvk`, `dll_overrides`, `[umu]`…) into a tool that only runs native games, and every sruman release would wait on lootrs. So `libsruman::model::Profile` copies lootrs' generic fields by name and meaning (`name`, `prefix`, `runner_args`, `wrappers`, `debug`, `env`, `shader_cache`) and adds an `[slr]` section (`SlrSection`: runtime + container knobs). A sruman profile is then exactly a lootrs `native` profile plus `[slr]`. Later, lootrs only needs `slr: Option<libsruman::model::SlrSection>` on its `Profile` for one profile file to work in both tools. The dependency only goes downward: `liblootrs` → `libsruman`, never the reverse. |
+| D1  | **Where does the profile model live?** A: in `libsruman`, with lootrs depending on it. B: in `liblootrs`, with sruman depending on it. | **Settled: A, with lootrs' shape.** With both GPL, B no longer has a license cost, but it would still pull lootrs' wine/umu/proton model (`dxvk`, `dll_overrides`, `[umu]`…) into a tool that only runs native games, and every sruman release would wait on lootrs. So `libsruman::model::Profile` copies lootrs' generic fields by name and meaning (`name`, `prefix`, `runner_args`, `wrappers`, `debug`, `env`, `shader_cache`) and adds an `[slr]` section (`SlrSection`: runtime + container knobs). A sruman profile is then exactly a lootrs `native` profile plus `[slr]`. Later, lootrs only needs `slr: Option<libsruman::model::SlrSection>` on its `Profile` for one profile file to work in both tools. The dependency only goes downward: `liblootrs` → `libsruman`, never the reverse. **Revised 2026-11-22: C.** The model lives in neither tool: [libgameprofiles](https://github.com/Gigas002/libgameprofiles) holds the whole format (every runner's fields, `[slr]` with `runtime` as a string), its file checks and the profile loader, and lootrs, gaki and sruman depend on it. A sruman profile is a `native` profile with `[slr]` (`runner = "native"` is now required in the file); sruman parses `slr.runtime` into a `RuntimeRef` and checks it against the catalog. |
 | D2  | **Sync or async library?** lootrs is sync, gaki is tokio. | **Settled: sync.** Long operations take a `Progress` trait and a `CancelFlag`. HTTP goes through a `Fetch` trait, with a default `ureq` impl behind `download`, so gaki can plug in its own `reqwest` client (proxy and all) and call installs via `spawn_blocking`. |
 | D3  | **License.** | **Settled: GPL-3.0-or-later** for both crates (fill `LICENSE`, workspace `license`, `deny.toml`). |
 | D4  | **Versions and pin syntax.** | **Settled: Valve's build id** (`3.0.20261021.266025`) is the version, so pacman's `name=version` syntax works: `sruman -S sniper=3.0.20261021.266025`, or `runtime = "sniper=3.0.…"` in a profile. A bare `sniper` follows the newest installed build (per-suite `current` symlink). Build ids compare numerically, part by part. |
@@ -279,12 +279,13 @@ executable pass through untouched (`trailing_var_arg`). Nothing below
 
 ---
 
-## Profiles and prefixes (lootrs model)
+## Profiles and prefixes (libgameprofiles format)
 
 `~/.config/sruman/profiles/scout.toml`:
 
 ```toml
 name = "scout"                                   # must equal the file stem
+runner = "native"                                # sruman runs `native` profiles with [slr]
 prefix = "~/.local/share/sruman/prefixes/indie"  # optional; shared by any profile that names it
 # runner_args = []                               # passed to the runtime entry point
 # wrappers = ["gamemoderun", "mangohud"]         # outside the container, like Steam's %command%
@@ -293,16 +294,20 @@ prefix = "~/.local/share/sruman/prefixes/indie"  # optional; shared by any profi
 # [env]
 # SDL_VIDEODRIVER = "wayland"
 
-[slr]                                            # libsruman::model::SlrSection
+[slr]                                            # libgameprofiles::SlrSection
 runtime = "scout"                                # or "scout=1.0.20261021.266054" to pin
 # filesystems_rw = ["~/Games"]
 # filesystems_ro = []
 ```
 
-- **Named files** like lootrs: the file stem is the name, names are validated
-  with lootrs' rules (`[A-Za-z0-9._-]+`), validation collects every `Issue`
-  instead of failing fast, and unknown or misplaced fields warn instead of
-  failing.
+- **One format for three tools:** profiles are
+  [libgameprofiles](https://github.com/Gigas002/libgameprofiles) format, shared
+  with lootrs and gaki, which also loads, saves and checks the files. The file
+  stem is the name, names are validated (`[A-Za-z0-9._-]+`), validation
+  collects every `Issue` instead of failing fast, and unknown or misplaced
+  fields warn instead of failing. sruman adds its own checks
+  (`model::validate_profile`): `runner = "native"`, a required `[slr]`, and a
+  runtime the catalog knows.
 - **Implicit profiles:** every catalog runtime name (`sniper`, `scout`, …)
   works as a profile with defaults and no prefix, so `sruman -p sniper ./game`
   works without any file. A real file with the same name overrides it.

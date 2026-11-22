@@ -25,7 +25,7 @@ fn example_profiles_load_and_validate_without_errors() {
         ["scout", "shared-prefix-a", "shared-prefix-b", "sniper"]
     );
     for profile in loaded.profiles.values() {
-        let issues = profile.validate(&ctx);
+        let issues = model::validate_profile(profile, &ctx);
         assert!(issues.is_empty(), "{}: {issues:#?}", profile.name);
     }
 }

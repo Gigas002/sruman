@@ -328,10 +328,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
+name = "libgameprofiles"
+version = "0.1.0"
+source = "git+https://github.com/Gigas002/libgameprofiles?branch=master#19c9f4352357040785787aa8a289221ecec2a1c5"
+dependencies = [
+ "serde",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "libsruman"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "libgameprofiles",
  "lzma-rust2",
  "rustix",
  "serde",

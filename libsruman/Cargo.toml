@@ -20,6 +20,7 @@ ureq = ["download", "dep:ureq"]
 diag = ["dep:serde_json"]
 
 [dependencies]
+libgameprofiles.workspace = true
 flate2.workspace = true
 lzma-rust2 = { workspace = true, optional = true }
 rustix.workspace = true

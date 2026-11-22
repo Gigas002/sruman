@@ -1,26 +1,25 @@
 //! Games and profiles as stored in `games.toml` and `profiles/*.toml`,
 //! plus validation.
 //!
-//! The shapes follow lootrs: a sruman profile is a lootrs `native` profile
-//! plus an `[slr]` section ([`SlrSection`], the part lootrs embeds).
+//! Profiles are in the libgameprofiles format, shared with lootrs and gaki: a
+//! sruman profile is a `native` profile with an `[slr]` section
+//! ([`SlrSection`]). Games follow lootrs' `games.toml`.
 //! Validation never fails fast: it returns every [`Issue`] it finds, so
 //! `-Pk`/`-Gk` show them all at once.
 
-use std::{
-    collections::BTreeMap,
-    fmt, fs, io,
-    path::{Path, PathBuf},
-};
+use std::path::Path;
 
 mod game;
 mod profile;
 
 pub use game::{Game, LoadedGames, RunTarget, TargetError, load_games, resolve_target};
+pub use libgameprofiles::{Issue, Issues, Severity, Subject, validate_name};
 pub use profile::{
-    LoadedProfiles, Profile, ShaderCache, SlrSection, implicit_profile, load_dir, save_profile,
+    LoadedProfiles, Profile, Runner, ShaderCache, SlrSection, implicit_profile, load_dir,
+    new_profile, save_profile, slr, validate_profile,
 };
 
-use crate::{catalog::Catalog, paths};
+use crate::catalog::Catalog;
 
 #[cfg(test)]
 mod tests;
@@ -31,150 +30,6 @@ pub struct ValidationContext<'a> {
     /// Used to expand `~` in paths.
     pub home: &'a Path,
     pub catalog: &'a Catalog,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity {
-    Warning,
-    Error,
-}
-
-/// What an [`Issue`] is about.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Subject {
-    Game(String),
-    Profile(String),
-    /// A file that could not be loaded at all.
-    File(PathBuf),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Issue {
-    pub severity: Severity,
-    pub subject: Subject,
-    pub message: String,
-}
-
-impl Issue {
-    pub fn is_error(&self) -> bool {
-        self.severity == Severity::Error
-    }
-}
-
-impl fmt::Display for Severity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Warning => "warning",
-            Self::Error => "error",
-        })
-    }
-}
-
-impl fmt::Display for Subject {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Game(name) => write!(f, "game `{name}`"),
-            Self::Profile(name) => write!(f, "profile `{name}`"),
-            Self::File(path) => write!(f, "{}", path.display()),
-        }
-    }
-}
-
-impl fmt::Display for Issue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}: {}", self.severity, self.subject, self.message)
-    }
-}
-
-/// Checks a game or profile name: `[A-Za-z0-9._-]+`, not `.`/`..`, not
-/// starting with `-` (lootrs' rule).
-///
-/// Names are used as CLI arguments, file names and process tags.
-pub fn validate_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("name must not be empty".into());
-    }
-    if name == "." || name == ".." || name.starts_with('-') {
-        return Err(format!("name `{name}` is not allowed"));
-    }
-    if let Some(c) = name
-        .chars()
-        .find(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')))
-    {
-        return Err(format!(
-            "name `{name}` contains `{c}`; use only letters, digits, `.`, `_` and `-`"
-        ));
-    }
-    Ok(())
-}
-
-/// Collects issues for one subject.
-pub(crate) struct Issues {
-    subject: Subject,
-    list: Vec<Issue>,
-}
-
-impl Issues {
-    pub(crate) fn new(subject: Subject) -> Self {
-        Self {
-            subject,
-            list: Vec::new(),
-        }
-    }
-
-    fn push(&mut self, severity: Severity, message: impl Into<String>) {
-        self.list.push(Issue {
-            severity,
-            subject: self.subject.clone(),
-            message: message.into(),
-        });
-    }
-
-    pub(crate) fn error(&mut self, message: impl Into<String>) {
-        self.push(Severity::Error, message);
-    }
-
-    pub(crate) fn warn(&mut self, message: impl Into<String>) {
-        self.push(Severity::Warning, message);
-    }
-
-    pub(crate) fn name(&mut self, name: &str) {
-        if let Err(message) = validate_name(name) {
-            self.error(message);
-        }
-    }
-
-    /// Errors unless `path` is absolute after `~` expansion; returns the
-    /// expanded path when it is.
-    pub(crate) fn absolute(&mut self, field: &str, path: &Path, home: &Path) -> Option<PathBuf> {
-        let expanded = paths::expand_tilde(path, home);
-        if expanded.is_absolute() {
-            return Some(expanded);
-        }
-        self.error(format!(
-            "`{field}` must be an absolute path (or start with `~`), got `{}`",
-            path.display()
-        ));
-        None
-    }
-
-    pub(crate) fn env(&mut self, env: &BTreeMap<String, String>) {
-        for key in env.keys() {
-            if key.is_empty() || key.contains(['=', '\0']) {
-                self.error(format!("`env` key `{key}` is not a valid variable name"));
-            }
-        }
-    }
-
-    pub(crate) fn wrappers(&mut self, wrappers: &[String]) {
-        if wrappers.iter().any(|wrapper| wrapper.trim().is_empty()) {
-            self.error("`wrappers` must not contain empty entries");
-        }
-    }
-
-    pub(crate) fn finish(self) -> Vec<Issue> {
-        self.list
-    }
 }
 
 /// Warns about keys a file has that the schema doesn't know, instead of
@@ -206,28 +61,17 @@ pub(crate) fn unknown_keys(value: &toml::Value, known: &[&str], issues: &mut Iss
 
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
-    #[error("{path}: {source}")]
-    Io {
-        path: PathBuf,
-        #[source]
-        source: io::Error,
-    },
-    #[error("{path}: {message}")]
-    Serialize { path: PathBuf, message: String },
+    #[error(transparent)]
+    Store(libgameprofiles::store::Error),
     #[error("invalid profile name: {0}")]
     InvalidName(String),
 }
 
-/// Writes through a temporary file and a rename.
-pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), ModelError> {
-    let io_err = |source| ModelError::Io {
-        path: path.to_path_buf(),
-        source,
-    };
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(io_err)?;
+impl From<libgameprofiles::store::Error> for ModelError {
+    fn from(err: libgameprofiles::store::Error) -> Self {
+        match err {
+            libgameprofiles::store::Error::InvalidName(message) => Self::InvalidName(message),
+            err => Self::Store(err),
+        }
     }
-    let tmp = path.with_extension(format!("toml.tmp.{}", std::process::id()));
-    fs::write(&tmp, text).map_err(io_err)?;
-    fs::rename(&tmp, path).map_err(io_err)
 }

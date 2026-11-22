@@ -2,6 +2,7 @@ use std::{fs, os::unix::fs::PermissionsExt};
 
 use super::*;
 use crate::{
+    model::new_profile,
     store::{BuildMeta, MakeCurrent, Source},
     version::BuildId,
 };
@@ -89,7 +90,7 @@ fn executable(path: &Path) {
 }
 
 fn profile() -> Profile {
-    let mut profile = Profile::new("indie", "sniper".parse().unwrap());
+    let mut profile = new_profile("indie", &"sniper".parse().unwrap());
     profile.prefix = Some("~/prefixes/indie".into());
     profile.wrappers = vec!["gamemoderun".into(), "mangohud --dlsym".into()];
     profile.runner_args = vec!["--verbose".into()];
@@ -98,8 +99,9 @@ fn profile() -> Profile {
         ("B".into(), "profile".into()),
     ]);
     profile.shader_cache = Some(ShaderCache::Dir("~/.cache/shaders".into()));
-    profile.slr.filesystems_rw = vec!["~/Music".into(), "~/Games/Buckshot".into()];
-    profile.slr.filesystems_ro = vec!["/mnt/ro".into()];
+    profile.slr.as_mut().unwrap().filesystems_rw =
+        vec!["~/Music".into(), "~/Games/Buckshot".into()];
+    profile.slr.as_mut().unwrap().filesystems_ro = vec!["/mnt/ro".into()];
     profile
 }
 
@@ -185,7 +187,7 @@ fn path_run_without_prefix_and_debug() {
     let dir = w.home.join("Games/SuperTux");
     fs::create_dir_all(&dir).unwrap();
     executable(&dir.join("run.sh"));
-    let mut profile = Profile::new("sniper", "sniper".parse().unwrap());
+    let mut profile = new_profile("sniper", &"sniper".parse().unwrap());
     profile.debug = true;
     let extra = ["--level".to_owned(), "2".to_owned()];
     let plan = prepare(
@@ -240,7 +242,7 @@ fn every_problem_is_reported_at_once() {
     game.cwd = Some("/nowhere".into());
     let mut profile = profile();
     profile.wrappers.push("nothere --x".into());
-    profile.slr.runtime = "soldier".parse().unwrap();
+    profile.slr.as_mut().unwrap().runtime = "soldier".into();
     let err = prepare(
         Target::Game(&game),
         &profile,
@@ -259,7 +261,7 @@ fn every_problem_is_reported_at_once() {
         ]
     );
 
-    let pinned = Profile::new("p", "sniper=3.0.1".parse().unwrap());
+    let pinned = new_profile("p", &"sniper=3.0.1".parse().unwrap());
     let err = prepare(
         Target::Shell,
         &pinned,
@@ -271,8 +273,8 @@ fn every_problem_is_reported_at_once() {
         err.problems,
         ["runtime `sniper=3.0.1` is not installed; run `sruman -S sniper=3.0.1`"]
     );
-    let mut colon = Profile::new("p", "sniper".parse().unwrap());
-    colon.slr.filesystems_rw = vec!["/a:b".into()];
+    let mut colon = new_profile("p", &"sniper".parse().unwrap());
+    colon.slr.as_mut().unwrap().filesystems_rw = vec!["/a:b".into()];
     let err = prepare(
         Target::Shell,
         &colon,
@@ -290,7 +292,7 @@ fn a_non_executable_or_broken_build_is_named() {
     fs::write(&file, "x").unwrap();
     let err = prepare(
         Target::Exe(&file),
-        &Profile::new("p", "sniper".parse().unwrap()),
+        &new_profile("p", &"sniper".parse().unwrap()),
         &Tag::Session("s".into()),
         &w.ctx(&[], &[]),
     )
@@ -306,7 +308,7 @@ fn a_non_executable_or_broken_build_is_named() {
     fs::remove_file(w.build_dir().join("run")).unwrap();
     let err = prepare(
         Target::Shell,
-        &Profile::new("p", "sniper".parse().unwrap()),
+        &new_profile("p", &"sniper".parse().unwrap()),
         &Tag::Session("s".into()),
         &w.ctx(&[], &[]),
     )
@@ -402,8 +404,15 @@ fn wrap_is_usable_on_its_own() {
         env: BTreeMap::from([("LOOTRS_GAME".into(), "g".into())]),
         cwd: "/opt/game".into(),
     };
-    let profile = Profile::new("lootrs-native", "sniper".parse().unwrap());
-    let plan = wrap(native, &profile.slr, &profile, None, &w.ctx(&[], &[])).unwrap();
+    let profile = new_profile("lootrs-native", &"sniper".parse().unwrap());
+    let plan = wrap(
+        native,
+        profile.slr.as_ref().unwrap(),
+        &profile,
+        None,
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
     let spec = plan.spec(&[]);
     let build = w.build_dir().display().to_string();
     assert_eq!(
@@ -454,7 +463,7 @@ fn real_launch() {
             "sniper".into()
         }
     };
-    let mut profile = Profile::new("real", runtime.parse().unwrap());
+    let mut profile = new_profile("real", &runtime.parse().unwrap());
     profile.prefix = Some("~/prefixes/real".into());
     let extra: Vec<String> = vec![
         "-c".into(),
@@ -549,10 +558,10 @@ fn scout_runs_through_soldier() {
     let scout = w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
     let game = w.game();
     let mut profile = profile();
-    profile.slr.runtime = "scout".parse().unwrap();
+    profile.slr.as_mut().unwrap().runtime = "scout".into();
     profile.wrappers.clear();
     profile.shader_cache = None;
-    profile.slr.filesystems_rw.clear();
+    profile.slr.as_mut().unwrap().filesystems_rw.clear();
     let plan = prepare(
         Target::Game(&game),
         &profile,
@@ -606,7 +615,7 @@ fn scout_runs_through_soldier() {
 fn scout_without_soldier_names_the_fix() {
     let w = World::new();
     w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
-    let profile = Profile::new("scout", "scout".parse().unwrap());
+    let profile = new_profile("scout", &"scout".parse().unwrap());
     let err = prepare(
         Target::Shell,
         &profile,
@@ -626,7 +635,7 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
     let ldlp = w.install_marker("scout-ldlp", "1.0.1", "run.sh");
     let game = w.game();
     let mut profile = profile();
-    profile.slr.runtime = "scout-ldlp".parse().unwrap();
+    profile.slr.as_mut().unwrap().runtime = "scout-ldlp".into();
     profile.shader_cache = None;
     let search = [w.bin.clone()];
     let plan = prepare(
@@ -677,7 +686,7 @@ fn scout_ldlp_has_no_container_and_redirects_home_by_env() {
     assert_eq!(plan.prefix.as_ref().unwrap().home, HomeMode::Env);
 
     // Without a prefix the real home stays.
-    let plain = Profile::new("p", "scout-ldlp".parse().unwrap());
+    let plain = new_profile("p", &"scout-ldlp".parse().unwrap());
     let spec = prepare(
         Target::Shell,
         &plain,
@@ -707,7 +716,7 @@ fn preflight_is_empty_when_all_is_in_place() {
     fs::create_dir_all(w.home.join("Music")).unwrap();
     fs::create_dir_all(w.home.join("Games/Buckshot")).unwrap();
     let mut profile = profile();
-    profile.slr.filesystems_ro.clear();
+    profile.slr.as_mut().unwrap().filesystems_ro.clear();
     assert_eq!(
         issue_text(&preflight(
             &profile,
@@ -722,7 +731,7 @@ fn preflight_names_each_fix() {
     let w = World::new();
     w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
     let mut profile = profile();
-    profile.slr.runtime = "scout".parse().unwrap();
+    profile.slr.as_mut().unwrap().runtime = "scout".into();
     profile.wrappers.push("nothere".into());
     let text = issue_text(&preflight(
         &profile,
@@ -741,7 +750,7 @@ fn preflight_names_each_fix() {
     );
 
     // Validation errors come first and stop the rest.
-    let mut broken = Profile::new("broken", "nope".parse().unwrap());
+    let mut broken = new_profile("broken", &"nope".parse().unwrap());
     broken.prefix = Some("relative".into());
     let text = issue_text(&preflight(&broken, &w.ctx(&[], &[])));
     assert_eq!(text.len(), 2, "{text:#?}");
@@ -752,7 +761,7 @@ fn preflight_names_each_fix() {
 
     // A prefix path that is a file.
     fs::write(w.home.join("afile"), "").unwrap();
-    let mut file_prefix = Profile::new("f", "sniper".parse().unwrap());
+    let mut file_prefix = new_profile("f", &"sniper".parse().unwrap());
     file_prefix.prefix = Some("~/afile".into());
     let text = issue_text(&preflight(&file_prefix, &w.ctx(&[], &[])));
     assert_eq!(
@@ -770,7 +779,7 @@ fn shells_per_runtime_kind() {
     let scout = w.install_marker("scout", "1.0.1", "scout-on-soldier-entry-point-v2");
     let tag = Tag::Session("shell:p:1".into());
     for (runtime, with_prefix) in [("sniper", true), ("sniper", false), ("scout", true)] {
-        let mut profile = Profile::new("p", runtime.parse().unwrap());
+        let mut profile = new_profile("p", &runtime.parse().unwrap());
         profile.wrappers = vec!["gamemoderun".into()];
         if with_prefix {
             profile.prefix = Some("~/prefixes/p".into());
