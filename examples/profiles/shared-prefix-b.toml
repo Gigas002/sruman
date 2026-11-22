@@ -1,6 +1,7 @@
 # The second profile on the shared `indie` prefix (see shared-prefix-a.toml).
 
 name = "shared-prefix-b"
+runner = "native"
 prefix = "~/.local/share/sruman/prefixes/indie"
 
 [env]

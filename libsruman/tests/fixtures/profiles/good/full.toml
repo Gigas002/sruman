@@ -1,4 +1,5 @@
 name = "full"
+runner = "native"
 prefix = "~/prefixes/full"
 runner_args = ["--verbose"]
 wrappers = ["mangohud --dlsym", "gamemoderun"]

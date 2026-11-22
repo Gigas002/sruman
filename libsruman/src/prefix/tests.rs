@@ -1,7 +1,7 @@
 use std::os::unix::fs::{PermissionsExt, symlink};
 
 use super::*;
-use crate::model::Profile;
+use crate::model::new_profile;
 
 struct Env {
     _tmp: tempfile::TempDir,
@@ -239,7 +239,7 @@ fn sharing_lists_profiles_on_the_same_prefix() {
         ("c", Some("~/p/other")),
         ("d", None),
     ] {
-        let mut profile = Profile::new(name, "sniper".parse().unwrap());
+        let mut profile = new_profile(name, &"sniper".parse().unwrap());
         profile.prefix = prefix.map(PathBuf::from);
         profiles.profiles.insert(name.into(), profile);
     }

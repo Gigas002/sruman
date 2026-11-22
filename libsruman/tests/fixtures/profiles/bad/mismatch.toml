@@ -1,4 +1,5 @@
 name = "other"
+runner = "native"
 
 [slr]
 runtime = "sniper"

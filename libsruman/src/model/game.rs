@@ -67,7 +67,8 @@ impl Game {
         {
             issues.warn(format!("`cwd` not found: {}", cwd.display()));
         }
-        issues.env(&self.env);
+        issues.args("args", &self.args, true);
+        issues.env("env", &self.env);
         issues.finish()
     }
 }
