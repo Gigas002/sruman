@@ -295,7 +295,7 @@ fn every_problem_is_reported_at_once() {
             format!("executable not found: {home}/missing/game"),
             "working directory not found: /nowhere".into(),
             "wrapper `nothere` not found in PATH".into(),
-            "runtime `soldier` is not installed; run `sruman -S soldier`".into(),
+            "runtime `soldier` is not installed; run `sruman install soldier`".into(),
         ]
     );
 
@@ -309,7 +309,7 @@ fn every_problem_is_reported_at_once() {
     .unwrap_err();
     assert_eq!(
         err.problems,
-        ["runtime `sniper=3.0.1` is not installed; run `sruman -S sniper=3.0.1`"]
+        ["runtime `sniper=3.0.1` is not installed; run `sruman install sniper=3.0.1`"]
     );
     let mut colon = new_profile("p", &"sniper".parse().unwrap());
     colon.slr.as_mut().unwrap().filesystems_rw = vec!["/a:b".into()];
@@ -352,7 +352,8 @@ fn a_non_executable_or_broken_build_is_named() {
     )
     .unwrap_err();
     assert!(
-        err.problems[0].contains("is incomplete") && err.problems[0].contains("sruman -Qkk sniper"),
+        err.problems[0].contains("is incomplete")
+            && err.problems[0].contains("sruman verify --full sniper"),
         "{err}"
     );
 }
@@ -464,6 +465,36 @@ fn wrap_is_usable_on_its_own() {
     );
     assert_eq!(spec.env["LOOTRS_GAME"], "g");
     assert_eq!(spec.env["PRESSURE_VESSEL_FILESYSTEMS_RW"], "/opt/game");
+}
+
+#[test]
+fn container_paths_are_not_shared() {
+    let w = World::new();
+    w.install("sniper", "3.0.1");
+    let profile = new_profile("p", &"sniper".parse().unwrap());
+    // `/usr/bin/true` from `/usr`: both are the container's own.
+    let native = NativeCommand {
+        program: "/usr/bin/true".into(),
+        args: Vec::new(),
+        env: BTreeMap::new(),
+        cwd: "/usr".into(),
+    };
+    let plan = wrap(
+        native,
+        profile.slr.as_ref().unwrap(),
+        &profile,
+        None,
+        &w.ctx(&[], &[]),
+    )
+    .unwrap();
+    let spec = plan.spec(&[]);
+    assert!(
+        !spec.env.contains_key("PRESSURE_VESSEL_FILESYSTEMS_RW"),
+        "{:?}",
+        spec.env
+    );
+    assert!(container_owns(Path::new("/lib64/x")) && container_owns(Path::new("/")));
+    assert!(!container_owns(Path::new("/opt/game")) && !container_owns(Path::new("/libfoo")));
 }
 
 /// Runs a command in a real runtime: the prefix home receives the writes,
@@ -674,7 +705,7 @@ fn scout_without_soldier_names_the_fix() {
     .unwrap_err();
     assert_eq!(
         err.problems,
-        ["`scout` runs inside `soldier`, which is not installed; run `sruman -S soldier`"]
+        ["`scout` runs inside `soldier`, which is not installed; run `sruman install soldier`"]
     );
 }
 
@@ -961,7 +992,7 @@ fn preflight_names_each_fix() {
     assert_eq!(
         text,
         [
-            "error: profile `indie`: `scout` runs inside `soldier`, which is not installed; run `sruman -S soldier`".to_owned(),
+            "error: profile `indie`: `scout` runs inside `soldier`, which is not installed; run `sruman install soldier`".to_owned(),
             "error: profile `indie`: wrapper `nothere` not found in PATH".into(),
             format!("warning: profile `indie`: `slr.filesystems_rw`: {home}/Music doesn't exist, so it isn't shared"),
             format!("warning: profile `indie`: `slr.filesystems_rw`: {home}/Games/Buckshot doesn't exist, so it isn't shared"),

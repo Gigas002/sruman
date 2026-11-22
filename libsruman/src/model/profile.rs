@@ -117,7 +117,7 @@ pub struct LoadedProfiles {
 impl LoadedProfiles {
     /// The profile file `name`, or the implicit profile for a catalog
     /// runtime of that name (no prefix, default settings), so
-    /// `sruman -p sniper ./game` works without any file.
+    /// `sruman execute -p sniper ./game` works without any file.
     pub fn get(&self, name: &str, catalog: &Catalog) -> Option<Profile> {
         self.profiles
             .get(name)

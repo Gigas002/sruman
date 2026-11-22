@@ -18,7 +18,7 @@ const KNOWN_KEYS: &[&str] = &["name", "exe", "profile", "args", "cwd", "env.*"];
 /// One `[[game]]` entry in `games.toml`: lootrs' shape without `game_id`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
-    /// Unique id, used by `sruman <name>`.
+    /// Unique id, used by `sruman run <name>`.
     pub name: String,
     pub exe: PathBuf,
     /// Unset: `default_profile` from `config.toml`.

@@ -19,6 +19,21 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The `sruman` binary: runtime commands (`sync`, `install`, `upgrade`,
+  `outdated`, `remove`, `search`, `info`, `runtimes`, `builds`, `files`,
+  `verify`, `clean`, `import`), games and running (`run`, `execute`,
+  `shell`, `status`, `stop`, `killall`, `list`, `show`, `check`, `logs`,
+  `init`), `profiles list|show|new|edit|edit-games|delete` and `doctor`.
+  Detached runs stay under a supervisor that writes a run log per game;
+  `--json` for scripts; exit codes as in lootrs. A runtime missing at launch
+  is offered for install (D12).
+
+- `sruman provide-umu <rt> | --appid <id>` and `libsruman::umu`: an
+  installed build as umu-launcher's runtime folder
+  (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a symlink view with umu's marker),
+  so umu runs sruman's runtime instead of downloading its own. `--json`
+  gives lootrs the folders path and the build's hold file.
+
 - Overlay mode (`[slr] mode = "overlay"`): the game runs on the host, with
   the runtime's libraries on `LD_LIBRARY_PATH` where the host's are missing
   or older. glibc and the GPU stack always come from the host, and the

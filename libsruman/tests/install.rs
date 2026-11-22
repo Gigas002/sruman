@@ -120,6 +120,7 @@ impl World {
     fn options() -> TxOptions {
         TxOptions {
             channel: Channel::Stable,
+            channels: Default::default(),
             arch: Arch::X86_64,
             download_only: false,
         }

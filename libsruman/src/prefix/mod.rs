@@ -300,7 +300,7 @@ pub fn reset(prefix: &Path, ctx: &PrefixContext) -> Result<(), PrefixError> {
     }
 }
 
-/// Deletes the whole prefix directory (`-Pdd`). Only a directory with a
+/// Deletes the whole prefix directory (`profiles delete --prefix`). Only a directory with a
 /// state file counts as a prefix, so a mistyped path can't take a real
 /// directory with it. Fails while a game runs in it.
 pub fn remove(prefix: &Path, ctx: &PrefixContext) -> Result<(), PrefixError> {

@@ -25,19 +25,19 @@ pub struct FileConfig {
     pub log_level: Option<LogLevel>,
     /// Daily app logs and run logs per game/profile to keep.
     pub log_keep: Option<usize>,
-    /// Profile for path runs and shells without `-p`.
+    /// Profile for `execute` and `shell` without `-p`.
     pub default_profile: Option<String>,
     pub channel: Option<Channel>,
     /// Per-runtime channels, `[channels] sniper = "beta"`.
     #[serde(default)]
     pub channels: BTreeMap<String, Channel>,
-    /// Installed builds kept per runtime by `-Sc`.
+    /// Installed builds kept per runtime by `clean`.
     pub keep_versions: Option<usize>,
     /// Install a missing runtime at launch without asking (D12).
     pub auto_install: Option<bool>,
     pub color: Option<ColorChoice>,
     pub prefix_root: Option<PathBuf>,
-    /// SIGTERM → SIGKILL grace period for `-Xk`.
+    /// SIGTERM → SIGKILL grace period for `stop`.
     pub stop_timeout_secs: Option<u64>,
     /// `[[runtime]]` catalog extensions and overrides (D8).
     #[serde(default)]

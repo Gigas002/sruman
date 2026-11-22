@@ -1,6 +1,6 @@
 # ~/.config/sruman/games.toml: the same format as lootrs' games.toml
-# (without `game_id`). Run a game with `sruman <name>`; check this file
-# with `sruman -Gk`. Paths may start with `~`.
+# (without `game_id`). Run a game with `sruman run <name>`; check this file
+# with `sruman check`. Paths may start with `~`.
 
 [[game]]
 name = "hollow-knight"                     # letters, digits, `.`, `_`, `-`

@@ -1,4 +1,4 @@
-//! Doctor checks (`sruman -D`): can this machine run the runtimes?
+//! Doctor checks (`sruman doctor`): can this machine run the runtimes?
 //!
 //! - The kernel's user-namespace switches: `kernel.unprivileged_userns_clone`
 //!   (Debian/Arch), `user.max_user_namespaces`, and Ubuntu's AppArmor
@@ -408,7 +408,7 @@ pub fn check_requirements(tools: &Tools, timeout: Duration) -> Finding {
 /// `steam-runtime-system-info`'s report.
 #[derive(Debug, Clone)]
 pub struct SystemInfo {
-    /// The JSON as printed, for `-D --json` and bug reports.
+    /// The JSON as printed, for bug reports.
     pub raw: String,
     pub value: Value,
 }

@@ -1,6 +1,6 @@
 //! Valve's runtime file lists: `mtree.txt.gz` at a build's root and
 //! `usr-mtree.txt.gz` in its platform directory, and verifying a build
-//! against them (`-Qk`, `-Qkk`).
+//! against them (`verify`, `verify --full`).
 //!
 //! The format is BSD mtree as libarchive writes it: one entry per line,
 //! `<path> key=value... [flag...]`, with paths octal-escaped (`\040` for a
@@ -203,9 +203,9 @@ fn relative(text: &str) -> Result<PathBuf, String> {
 /// How thoroughly to verify.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Depth {
-    /// `-Qk`: every listed file, directory and link exists; file sizes match.
+    /// `verify`: every listed file, directory and link exists; file sizes match.
     Presence,
-    /// `-Qkk`: also SHA-256 of every file.
+    /// `verify --full`: also SHA-256 of every file.
     Content,
 }
 

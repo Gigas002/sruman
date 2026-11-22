@@ -5,7 +5,7 @@
 //!
 //! 1. [`prepare`] resolves everything (runtime builds, executable, working
 //!    directory, wrappers, env) and collects every problem at once. It only
-//!    reads the filesystem, so `--print`, `-Pk` and tests use it freely.
+//!    reads the filesystem, so `check` and tests use it freely.
 //! 2. [`LaunchPlan::acquire`] takes a shared hold on each runtime build and
 //!    sets up the prefix (its shared lock included), and returns the final
 //!    [`LaunchSpec`]. The caller spawns it, keeping [`Launch::fds`] open in
@@ -62,7 +62,7 @@ pub enum Target<'a> {
     /// An executable: a path (`~` allowed), or a bare name looked up in the
     /// runtime's `PATH`.
     Exe(&'a Path),
-    /// An interactive shell in the runtime (`-X --shell`).
+    /// An interactive shell in the runtime (`shell`).
     Shell,
 }
 
@@ -333,7 +333,7 @@ fn resolve_build(
         Ok(installed) => Some(installed),
         Err(_) => {
             problems.push(format!(
-                "runtime `{runtime}` is not installed; run `sruman -S {runtime}`"
+                "runtime `{runtime}` is not installed; run `sruman install {runtime}`"
             ));
             None
         }
@@ -361,7 +361,7 @@ pub fn resolve_runtimes(
     let marker = runtime.dir.join(def.entry.marker());
     if !is_executable(&marker) {
         problems.push(format!(
-            "{} {} is incomplete: {} is missing; check it with `sruman -Qkk {}`",
+            "{} {} is incomplete: {} is missing; check it with `sruman verify --full {}`",
             runtime.name,
             runtime.build,
             marker.display(),
@@ -389,7 +389,7 @@ pub fn resolve_runtimes(
             let run = host.dir.join(Entry::Container.marker());
             if !is_executable(&run) {
                 problems.push(format!(
-                    "{} {} is incomplete: {} is missing; check it with `sruman -Qkk {}`",
+                    "{} {} is incomplete: {} is missing; check it with `sruman verify --full {}`",
                     host.name,
                     host.build,
                     run.display(),
@@ -471,7 +471,7 @@ fn store_resolve_for(
         Ok(installed) => Some(installed),
         Err(_) => {
             problems.push(format!(
-                "`{needed_by}` runs inside `{runtime}`, which is not installed; run `sruman -S {runtime}`"
+                "`{needed_by}` runs inside `{runtime}`, which is not installed; run `sruman install {runtime}`"
             ));
             None
         }
@@ -500,6 +500,16 @@ fn join_paths(field: &str, list: &[PathBuf], problems: &mut Vec<String>) -> Opti
         joined.push(path);
     }
     Some(joined)
+}
+
+/// Paths pressure-vessel reserves for the container: the runtime's `/usr`
+/// (and the merged-usr links into it), `/etc`, `/app` and the kernel's.
+fn container_owns(path: &Path) -> bool {
+    const RESERVED: [&str; 12] = [
+        "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/app", "/proc",
+        "/sys", "/dev",
+    ];
+    path == Path::new("/") || RESERVED.iter().any(|root| path.starts_with(root))
 }
 
 fn push_unique(list: &mut Vec<PathBuf>, path: PathBuf) {
@@ -590,13 +600,19 @@ pub fn wrap(
     let container = runtimes.host.as_ref().unwrap_or(build);
     let mut rw: Vec<PathBuf> = Vec::new();
     let mut ro: Vec<PathBuf> = Vec::new();
+    // The executable's directory and the cwd, unless the container
+    // provides that path itself (`/usr/bin/…`): pressure-vessel refuses to
+    // share those and warns.
     let program = PathBuf::from(&native.program);
     if program.is_absolute()
         && let Some(dir) = program.parent()
+        && !container_owns(dir)
     {
         push_unique(&mut rw, dir.to_path_buf());
     }
-    push_unique(&mut rw, native.cwd.clone());
+    if !container_owns(&native.cwd) {
+        push_unique(&mut rw, native.cwd.clone());
+    }
     if runtimes.entry == Entry::ScoutOnSoldier {
         // The scout entry point keeps its runtime copy in the scout build.
         push_unique(&mut rw, build.dir.clone());

@@ -1,4 +1,4 @@
-//! `-U <dir>`: adopt a runtime directory that's already on disk, such as
+//! `import <dir>`: adopt a runtime directory that's already on disk, such as
 //! Steam's `steamapps/common/SteamLinuxRuntime_sniper` or umu's
 //! `steamrt3`, by copying it into the store or linking it in place.
 
