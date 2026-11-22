@@ -1,5 +1,5 @@
 //! The local sync index (pacman's sync databases): what Valve's server
-//! offers, per runtime, refreshed by `-Sy`.
+//! offers, per runtime, refreshed by `sync`.
 //!
 //! For each runtime, `sync/<name>.toml` records the server's
 //! `update-timestamp.txt`, which build each [`Channel`] points to, and per
@@ -337,7 +337,7 @@ fn read_channel(
 
 #[derive(Debug, Clone, Default)]
 pub struct RefreshOptions {
-    /// `-Syy`: refetch the channels even when the timestamp is unchanged.
+    /// `sync --force`: refetch the channels even when the timestamp is unchanged.
     pub force: bool,
     /// Only these runtimes; empty means every catalog runtime.
     pub only: Vec<String>,
@@ -355,7 +355,7 @@ pub enum RefreshOutcome {
     Failed(SyncError),
 }
 
-/// Refreshes the index of each runtime (pacman's `-Sy`). One runtime
+/// Refreshes the index of each runtime (`sync`). One runtime
 /// failing doesn't stop the others.
 pub fn refresh(
     fetch: &dyn Fetch,
@@ -462,8 +462,8 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// Records a build fetched on purpose (a pinned `-S sniper=<build>`) in the
-/// index, so the install and `-Si` find it.
+/// Records a build fetched on purpose (a pinned `install sniper=<build>`) in the
+/// index, so `install` and `info` find it.
 pub fn add_build(
     fetch: &dyn Fetch,
     catalog: &Catalog,
@@ -476,7 +476,7 @@ pub fn add_build(
         .ok_or_else(|| SyncError::UnknownRuntime(runtime.to_owned()))?;
     let mut index = dir.load(runtime).ok_or_else(|| {
         SyncError::Server(format!(
-            "no sync index for `{runtime}`; run `sruman -Sy` first"
+            "no sync index for `{runtime}`; run `sruman sync` first"
         ))
     })?;
     if let Some(info) = index.builds.get(build) {
@@ -488,7 +488,7 @@ pub fn add_build(
     Ok(info)
 }
 
-/// Every build directory under `images/` (for `-Sl`), oldest first. Only
+/// Every build directory under `images/` (for `builds`), oldest first. Only
 /// directories whose first number is `major` count when it's given (the
 /// sniper server also has `0.2022…` builds from before the `3.0` naming).
 pub fn list_builds(

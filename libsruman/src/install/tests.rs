@@ -511,6 +511,7 @@ impl Fake {
 fn opts() -> TxOptions {
     TxOptions {
         channel: Channel::Stable,
+        channels: Default::default(),
         arch: Arch::X86_64,
         download_only: false,
     }
@@ -608,6 +609,19 @@ fn upgrade_summary_shows_package_changes_and_pins_work() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn per_runtime_channels() {
+    let fake = Fake::new();
+    let sniper_beta = TxOptions {
+        channels: [("sniper".to_owned(), Channel::Beta)].into(),
+        ..opts()
+    };
+    assert_eq!(sniper_beta.channel_for("sniper"), Channel::Beta);
+    assert_eq!(sniper_beta.channel_for("soldier"), Channel::Stable);
+    let tx = fake.tx(&["sniper"], &sniper_beta).unwrap();
+    assert_eq!(labels(&tx), [format!("sniper {SNIPER_NEW}Explicit")]);
 }
 
 #[test]

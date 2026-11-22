@@ -1,17 +1,18 @@
 # sruman
 
-**Steam Runtime Manager**: a pacman/paru-style package manager for the
+**Steam Runtime Manager**: a package manager for the
 [Steam Linux Runtime](https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/blob/main/docs/container-runtime.md)
 that works without Steam, and a launcher that runs native Linux games inside
 those runtimes through lootrs-style games, profiles and prefixes.
 
 ```sh
 wine game.exe                         # Windows game in a wine prefix
-sruman -p scout ./game.x86_64         # native game in a Steam Linux Runtime "prefix"
+sruman execute -p scout ./game.x86_64 # native game in a Steam Linux Runtime "prefix"
 ```
 
-> **Status: early development.** Nothing below works yet. The design is in
-> [`docs/PLAN.md`](docs/PLAN.md); this README describes where it's going.
+> **Status: early development.** The commands below work; custom runtimes
+> are still to come. The design is in
+> [`docs/PLAN.md`](docs/PLAN.md).
 
 ## What it does
 
@@ -24,8 +25,8 @@ sruman -p scout ./game.x86_64         # native game in a Steam Linux Runtime "pr
   prefix directory. The game then gets the prefix as its home, so saves and
   configs stay there instead of in your real home, the way a wine prefix keeps
   `drive_c/users`. Several profiles can share one prefix.
-- **Games list.** `games.toml` uses lootrs' format, so `sruman <game>` and
-  `sruman <path>` both work.
+- **Games list.** `games.toml` uses lootrs' format, so `sruman run <game>`
+  and `sruman execute <path>` both work, with lootrs' command names.
 - **Shared profiles.** Profiles are in the
   [libgameprofiles](https://github.com/Gigas002/libgameprofiles) format that
   lootrs and gaki use too: a sruman profile has `runner = "slr"` and an
@@ -34,23 +35,28 @@ sruman -p scout ./game.x86_64         # native game in a Steam Linux Runtime "pr
   [lootrs](https://github.com/Gigas002/lootrs) and
   [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.
 
-## Planned usage
+## Usage
 
 ```sh
-sruman -Syu                          # refresh the index and upgrade installed runtimes (also: plain `sruman`)
-sruman -S sniper                     # install a runtime
-sruman -S sniper=3.0.20261021.266025 # install a specific build
-sruman -Ss sniper / -Si sniper       # search / show a runtime
-sruman -Q / -Qi sniper / -Qu / -Qk   # installed, info, upgradable, verify
-sruman -R soldier                    # remove
-sruman -U ~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_sniper --link   # adopt Steam's copy
+sruman upgrade --sync                     # refresh the index and upgrade installed runtimes
+sruman install sniper                     # install a runtime
+sruman install sniper=3.0.20261021.266025 # install a specific build
+sruman search sniper / info sniper        # search / show a runtime
+sruman runtimes / outdated / verify       # installed, upgradable, check their files
+sruman remove soldier                     # remove
+sruman import ~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_sniper --link   # adopt Steam's copy
 
-sruman hollow-knight                 # run a game from games.toml
-sruman -p scout ./game.x86_64        # run a path with a profile
-sruman -P / -Pi scout / -Pk          # profiles: list, show, check
-sruman -G / -Gk                      # games: list, check
-sruman -Xs / -Xk hollow-knight       # running games / stop one
-sruman -D                            # check the system (user namespaces, runtime self-test)
+sruman run hollow-knight                  # run a game from games.toml
+sruman execute -p scout ./game.x86_64     # run an executable with a profile
+sruman profiles list / show scout         # profiles
+sruman profiles new indie -r sniper --mode overlay   # a profile on your system, no container
+sruman list / check                       # games; check games and profiles
+sruman run hollow-knight --wait           # run in the foreground, with its output and exit code
+sruman logs hollow-knight                 # the latest run log
+sruman status / stop hollow-knight        # running games / stop one
+sruman shell -p scout                     # a shell in the profile's runtime and prefix
+sruman provide-umu --appid 4183110        # hand steamrt4 to umu (UMU_FOLDERS_PATH, no umu downloads)
+sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```
 
 ## Requirements

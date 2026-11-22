@@ -24,13 +24,7 @@ fn write_config(home: &Path, content: &str) {
 }
 
 fn query() -> CliOptions {
-    CliOptions {
-        invocation: Invocation {
-            ops: vec![OpFlag::Query],
-            ..Invocation::default()
-        },
-        ..CliOptions::default()
-    }
+    CliOptions::new(Command::Runtimes { quiet: false })
 }
 
 #[test]
@@ -105,13 +99,15 @@ fn cli_overrides_config() {
     let cli = CliOptions {
         color: Some(ColorChoice::Never),
         verbose: 2,
-        noconfirm: true,
+        yes: true,
+        json: true,
+        quiet: true,
         ..query()
     };
     let settings = Settings::resolve(cli, env(home.path(), &[])).unwrap();
 
     assert_eq!(settings.output.color, ColorChoice::Never);
-    assert!(settings.output.noconfirm);
+    assert!(settings.output.yes && settings.output.json && settings.output.quiet);
     assert_eq!(settings.logging.stderr, Some(LogLevel::Trace));
     assert_eq!(settings.logging.level, LogLevel::Trace);
 }
@@ -224,38 +220,33 @@ fn invalid_runtime_override() {
 fn default_profile_feeds_shells() {
     let home = tempfile::tempdir().unwrap();
     write_config(home.path(), "default_profile = \"soldier\"");
-    let cli = CliOptions {
-        invocation: Invocation {
-            modifiers: Modifiers {
-                shell: true,
-                ..Modifiers::default()
-            },
-            ..Invocation::default()
-        },
-        ..CliOptions::default()
-    };
+    let cli = CliOptions::new(Command::Shell {
+        profile: None,
+        debug: false,
+    });
     let settings = Settings::resolve(cli, env(home.path(), &[])).unwrap();
     assert_eq!(
-        settings.operation,
-        Operation::Exec(operation::Exec::Shell {
-            profile: "soldier".into(),
+        settings.command,
+        Command::Shell {
+            profile: Some("soldier".into()),
             debug: false
-        })
+        }
     );
 }
 
 #[test]
 fn usage_errors_surface() {
     let home = tempfile::tempdir().unwrap();
-    let cli = CliOptions {
-        invocation: Invocation {
-            ops: vec![OpFlag::Query, OpFlag::Remove],
-            ..Invocation::default()
-        },
-        ..CliOptions::default()
-    };
+    let cli = CliOptions::new(Command::Shell {
+        profile: None,
+        debug: false,
+    });
     let err = Settings::resolve(cli, env(home.path(), &[])).unwrap_err();
-    assert!(matches!(err, SettingsError::Usage(_)));
+    assert!(matches!(err, SettingsError::Usage(_)), "{err}");
+    assert_eq!(
+        err.to_string(),
+        "shell needs a profile: -p <profile>, or default_profile in config.toml"
+    );
 }
 
 #[test]

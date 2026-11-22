@@ -1,6 +1,6 @@
 # ~/.config/sruman/profiles/scout.toml
 # Older native games (built for Steam Runtime 1.0, e.g. Hollow Knight) run in
-# scout, which runs inside a soldier container: `sruman -S scout` installs both.
+# scout, which runs inside a soldier container: `sruman install scout` installs both.
 
 name = "scout"
 runner = "slr"

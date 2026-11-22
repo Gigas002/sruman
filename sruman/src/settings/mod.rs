@@ -13,9 +13,9 @@ use libsruman::{
 
 use crate::config::{self, ColorChoice, ConfigError, LogLevel};
 
-pub mod operation;
+pub mod command;
 
-pub use operation::{Invocation, Modifiers, OpFlag, Operation, UsageError};
+pub use command::{Command, UsageError};
 
 #[cfg(test)]
 mod tests;
@@ -25,15 +25,35 @@ pub const DEFAULT_KEEP_VERSIONS: usize = 2;
 pub const DEFAULT_STOP_TIMEOUT_SECS: u64 = 5;
 
 /// Values taken from the command line, already converted from `clap` types.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliOptions {
-    pub invocation: Invocation,
+    pub command: Command,
+    /// `--json`, on the commands that have it.
+    pub json: bool,
+    /// `-q`.
+    pub quiet: bool,
     /// `--config <file>`.
     pub config: Option<PathBuf>,
     pub color: Option<ColorChoice>,
-    pub noconfirm: bool,
+    /// `-y`/`--yes`.
+    pub yes: bool,
     /// `-v` count.
     pub verbose: u8,
+}
+
+impl CliOptions {
+    /// `command` with every global option at its default.
+    pub fn new(command: Command) -> Self {
+        Self {
+            command,
+            json: false,
+            quiet: false,
+            config: None,
+            color: None,
+            yes: false,
+            verbose: 0,
+        }
+    }
 }
 
 /// The process environment that settings depend on.
@@ -46,18 +66,18 @@ pub struct Environment<F> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
-    pub operation: Operation,
+    pub command: Command,
     pub dirs: Dirs,
     /// The built-in catalog with `[[runtime]]` applied.
     pub catalog: Catalog,
     pub channels: Channels,
-    /// Installed builds kept per runtime by `-Sc`.
+    /// Installed builds kept per runtime by `clean`.
     pub keep_versions: usize,
     /// Install a missing runtime at launch without asking (D12).
     pub auto_install: bool,
-    /// For path runs and shells without `-p`.
+    /// For `execute` and `shell` without `-p`.
     pub default_profile: Option<String>,
-    /// SIGTERM → SIGKILL grace period for `-Xk`.
+    /// SIGTERM → SIGKILL grace period for `stop`.
     pub stop_timeout: Duration,
     pub output: Output,
     pub logging: Logging,
@@ -65,7 +85,7 @@ pub struct Settings {
     pub search_path: Vec<PathBuf>,
     /// `$SHELL`, for shells in overlay mode.
     pub shell: Option<PathBuf>,
-    /// `$VISUAL` or `$EDITOR` (may include arguments), for `-Ge`/`-Pe`.
+    /// `$VISUAL` or `$EDITOR` (may include arguments), for `profiles edit`.
     pub editor: Option<String>,
 }
 
@@ -105,7 +125,7 @@ pub struct Output {
     pub json: bool,
     pub quiet: bool,
     /// Answer every `[Y/n]` with its default.
-    pub noconfirm: bool,
+    pub yes: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,15 +223,12 @@ impl Settings {
                 errors,
             })?;
 
-        let json = cli.invocation.json;
-        let quiet = cli.invocation.quiet;
-        let ctx = operation::Context {
+        let ctx = command::Context {
             cwd: &env.cwd,
             home: &xdg.home,
             default_profile: file.default_profile.as_deref(),
         };
-        let operation = operation::resolve(cli.invocation, &ctx)?;
-        operation::check_json(&operation, json)?;
+        let command = cli.command.resolve(&ctx)?;
 
         let stderr = match cli.verbose {
             0 => None,
@@ -243,7 +260,7 @@ impl Settings {
         });
 
         Ok(Self {
-            operation,
+            command,
             catalog,
             channels: Channels {
                 default: file.channel.unwrap_or_default(),
@@ -257,9 +274,9 @@ impl Settings {
             ),
             output: Output {
                 color,
-                json,
-                quiet,
-                noconfirm: cli.noconfirm,
+                json: cli.json,
+                quiet: cli.quiet,
+                yes: cli.yes,
             },
             logging: Logging {
                 level: stderr.map_or(file_level, |level| level.max(file_level)),

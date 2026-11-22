@@ -102,6 +102,10 @@ pub struct RuntimeDef {
     pub depends: Vec<String>,
     /// Per-channel pointer files, overriding [`Channel::pointer_files`].
     pub pointers: BTreeMap<String, Vec<String>>,
+    /// Steam's app id for this runtime, which Proton's `toolmanifest.vdf`
+    /// names in `require_tool_appid`: soldier 1391110, sniper 1628350,
+    /// steamrt4 4183110. Not configurable.
+    pub app_id: Option<u32>,
 }
 
 impl RuntimeDef {
@@ -125,6 +129,12 @@ impl RuntimeDef {
             entry,
             depends: depends.iter().map(|dep| (*dep).to_owned()).collect(),
             pointers: BTreeMap::new(),
+            app_id: match name {
+                "soldier" => Some(1_391_110),
+                "sniper" => Some(1_628_350),
+                "steamrt4" => Some(4_183_110),
+                _ => None,
+            },
         }
     }
 
@@ -262,6 +272,7 @@ impl Catalog {
                         entry,
                         depends: Vec::new(),
                         pointers: BTreeMap::new(),
+                        app_id: None,
                     }
                 }
             };
@@ -277,6 +288,7 @@ impl Catalog {
                 entry: over.entry.unwrap_or(def.entry),
                 depends: over.depends.clone().unwrap_or(def.depends),
                 pointers: over.pointers.clone().unwrap_or(def.pointers),
+                app_id: def.app_id,
                 name: def.name,
             };
             if !base_url_allowed(&def.base_url) {
@@ -322,6 +334,13 @@ impl Catalog {
     }
 
     /// All runtimes, by name.
+    /// The runtime with Steam app id `app_id` (`require_tool_appid`).
+    pub fn by_app_id(&self, app_id: u32) -> Option<&RuntimeDef> {
+        self.runtimes
+            .values()
+            .find(|def| def.app_id == Some(app_id))
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &RuntimeDef> {
         self.runtimes.values()
     }
@@ -376,7 +395,7 @@ impl Catalog {
         Ok(())
     }
 
-    /// Runtimes that depend on `name` directly (`-R` refuses to remove a
+    /// Runtimes that depend on `name` directly (`remove` refuses to remove a
     /// dependency that's still needed).
     pub fn dependents(&self, name: &str) -> Vec<&RuntimeDef> {
         self.iter()

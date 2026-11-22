@@ -50,13 +50,13 @@ pub enum StoreError {
     },
     #[error("the runtime store is locked by another sruman process ({0})")]
     Busy(PathBuf),
-    #[error("runtime `{name}` is not installed; install it with `sruman -S {name}`")]
+    #[error("runtime `{name}` is not installed; install it with `sruman install {name}`")]
     NotInstalled { name: String },
     #[error(
-        "runtime `{name}` build {build} is not installed; install it with `sruman -S {name}={build}`"
+        "runtime `{name}` build {build} is not installed; install it with `sruman install {name}={build}`"
     )]
     BuildMissing { name: String, build: BuildId },
-    #[error("{name} {build} is in use by a running game; stop it first, or force the removal")]
+    #[error("{name} {build} is in use by a running game; stop it first")]
     InUse { name: String, build: BuildId },
     #[error("{name} {build} is already installed")]
     AlreadyInstalled { name: String, build: BuildId },
@@ -77,9 +77,9 @@ fn io_err(path: impl Into<PathBuf>) -> impl FnOnce(io::Error) -> StoreError {
 pub enum Source {
     /// Downloaded and checked against the server's `SHA256SUMS`.
     Download { url: String, sha256: String },
-    /// Copied from a directory (`-U <dir>`).
+    /// Copied from a directory (`import <dir>`).
     Import { from: PathBuf },
-    /// Registered in place (`-U <dir> --link`); never deleted by sruman.
+    /// Registered in place (`import <dir> --link`); never deleted by sruman.
     Link { target: PathBuf },
 }
 
@@ -408,7 +408,7 @@ impl Store {
         self.finish_commit(lock, meta, make_current)
     }
 
-    /// Registers an existing directory in place (`-U --link`).
+    /// Registers an existing directory in place (`import --link`).
     pub fn link(
         &self,
         lock: &StoreLock,
@@ -487,6 +487,12 @@ impl Store {
             .join(".overlays")
             .join(&build.name)
             .join(build.build.to_string())
+    }
+
+    /// The file [`Store::hold`] locks shared: other launchers (lootrs before
+    /// a umu launch) take the same `flock` to keep the build installed.
+    pub fn hold_file(&self, build: &Installed) -> PathBuf {
+        self.hold_path(&build.name, &build.build)
     }
 
     /// Takes a shared hold on `build` for a game launch.
@@ -591,7 +597,7 @@ impl Store {
         Ok(report)
     }
 
-    /// Checks a build against its own file lists (`-Qk`/`-Qkk`): the
+    /// Checks a build against its own file lists (`verify`, `verify --full`): the
     /// top-level `mtree.txt.gz`, and each platform's `usr-mtree.txt.gz`.
     /// `None` when the build ships no file list (scout-ldlp).
     pub fn verify(

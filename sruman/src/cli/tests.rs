@@ -1,41 +1,30 @@
-//! Every row of the CLI tables in PLAN.md, from argv to [`Operation`].
+//! The CLI tables of `docs/PLAN.md`, row by row: what each command line
+//! parses to, and what clap refuses.
 
-use std::path::{Path, PathBuf};
-
+use clap::{Parser, error::ErrorKind};
 use libsruman::version::RuntimeRef;
 
 use super::*;
-use crate::settings::{
-    CliOptions,
-    operation::{self, Context, Exec, Games, Operation, Profiles, Query, Run},
-};
 
-fn parse(args: &[&str]) -> Result<CliOptions, String> {
-    Cli::try_parse_args(std::iter::once("sruman").chain(args.iter().copied()))
-        .map(Into::into)
-        .map_err(|err| err.to_string())
+fn parse(args: &[&str]) -> Result<CliOptions, clap::Error> {
+    Cli::try_parse_from(std::iter::once("sruman").chain(args.iter().copied())).map(Into::into)
 }
 
-fn resolve_with(args: &[&str], default_profile: Option<&str>) -> Result<Operation, String> {
-    let options = parse(args)?;
-    let ctx = Context {
-        cwd: Path::new("/work"),
-        home: Path::new("/home/u"),
-        default_profile,
-    };
-    let json = options.invocation.json;
-    let operation = operation::resolve(options.invocation, &ctx).map_err(|err| err.0)?;
-    operation::check_json(&operation, json).map_err(|err| err.0)?;
-    Ok(operation)
+/// The command `args` parse to, and `--json`.
+fn cmd(args: &[&str]) -> (Cmd, bool) {
+    let options = parse(args).unwrap_or_else(|e| panic!("{args:?}: {e}"));
+    (options.command, options.json)
 }
 
-fn resolve(args: &[&str]) -> Operation {
-    resolve_with(args, None).unwrap_or_else(|err| panic!("{args:?}: {err}"))
+fn plain(args: &[&str]) -> Cmd {
+    let (command, json) = cmd(args);
+    assert!(!json, "{args:?}");
+    command
 }
 
-fn error(args: &[&str]) -> String {
-    match resolve_with(args, None) {
-        Ok(operation) => panic!("{args:?} resolved to {operation:?}"),
+fn error(args: &[&str]) -> clap::Error {
+    match parse(args) {
+        Ok(options) => panic!("{args:?} parsed: {:?}", options.command),
         Err(err) => err,
     }
 }
@@ -45,549 +34,481 @@ fn rt(text: &str) -> RuntimeRef {
 }
 
 fn strings(items: &[&str]) -> Vec<String> {
-    items.iter().map(|item| (*item).to_owned()).collect()
+    items.iter().map(|s| (*s).to_owned()).collect()
+}
+
+#[test]
+fn bare_sruman_prints_the_help() {
+    let err = error(&[]);
+    assert_eq!(
+        err.kind(),
+        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    );
+    assert_eq!(err.exit_code(), 2);
+    let help = err.render().to_string();
+    assert!(help.contains("Usage: sruman [OPTIONS] <COMMAND>"), "{help}");
 }
 
 #[cfg(feature = "download")]
-mod sync {
-    use super::*;
-    use crate::settings::operation::{Sync, SyncAction};
-
-    fn sync(refresh: u8, action: SyncAction) -> Operation {
-        Operation::Sync(Sync { refresh, action })
-    }
-
-    fn upgrade(targets: &[&str], allow_downgrade: bool, download_only: bool) -> SyncAction {
-        SyncAction::Upgrade {
-            targets: strings(targets),
-            allow_downgrade,
-            download_only,
+#[test]
+fn runtime_commands_with_downloads() {
+    assert_eq!(plain(&["sync"]), Cmd::Sync { force: false });
+    assert_eq!(plain(&["sync", "--force"]), Cmd::Sync { force: true });
+    assert_eq!(
+        plain(&["install", "scout", "sniper=3.0.1", "--needed"]),
+        Cmd::Install {
+            targets: vec![rt("scout"), rt("sniper=3.0.1")],
+            needed: true,
+            download_only: false,
         }
-    }
+    );
+    assert_eq!(
+        plain(&["install", "--download-only", "steamrt4"]),
+        Cmd::Install {
+            targets: vec![rt("steamrt4")],
+            needed: false,
+            download_only: true,
+        }
+    );
+    assert_eq!(
+        plain(&["upgrade"]),
+        Cmd::Upgrade {
+            targets: Vec::new(),
+            sync: false,
+            allow_downgrade: false,
+            download_only: false,
+        }
+    );
+    assert_eq!(
+        plain(&[
+            "upgrade",
+            "sniper",
+            "--sync",
+            "--allow-downgrade",
+            "--download-only"
+        ]),
+        Cmd::Upgrade {
+            targets: strings(&["sniper"]),
+            sync: true,
+            allow_downgrade: true,
+            download_only: true,
+        }
+    );
+    assert_eq!(
+        plain(&["outdated"]),
+        Cmd::Outdated {
+            targets: Vec::new()
+        }
+    );
+    assert_eq!(
+        plain(&["search", "snip", "rt[0-9]"]),
+        Cmd::Search {
+            terms: strings(&["snip", "rt[0-9]"]),
+            packages: false,
+        }
+    );
+    assert_eq!(
+        plain(&["search", "--packages", "mesa"]),
+        Cmd::Search {
+            terms: strings(&["mesa"]),
+            packages: true,
+        }
+    );
+    assert_eq!(
+        plain(&["builds", "sniper"]),
+        Cmd::Builds {
+            runtime: "sniper".into()
+        }
+    );
+    assert_eq!(plain(&["clean"]), Cmd::Clean { all: false });
+    assert_eq!(plain(&["clean", "--all"]), Cmd::Clean { all: true });
 
-    #[test]
-    fn bare_sruman_is_syu() {
-        assert_eq!(resolve(&[]), sync(1, upgrade(&[], false, false)));
-        assert_eq!(resolve(&["-Syu"]), resolve(&[]));
-    }
-
-    #[test]
-    fn install() {
-        let install = |targets: &[&str], needed, download_only| SyncAction::Install {
-            targets: targets.iter().map(|t| rt(t)).collect(),
-            needed,
-            download_only,
-        };
-        assert_eq!(
-            resolve(&["-S", "sniper", "scout=1.0.20261021.266054"]),
-            sync(
-                0,
-                install(&["sniper", "scout=1.0.20261021.266054"], false, false)
-            )
-        );
-        assert_eq!(
-            resolve(&["-S", "--needed", "sniper"]),
-            sync(0, install(&["sniper"], true, false))
-        );
-        assert_eq!(
-            resolve(&["-Sw", "sniper"]),
-            sync(0, install(&["sniper"], false, true))
-        );
-        assert_eq!(
-            resolve(&["-Sy", "sniper"]),
-            sync(1, install(&["sniper"], false, false))
+    // Names only where a build makes no sense.
+    for args in [
+        &["upgrade", "sniper=3.0.1"][..],
+        &["outdated", "sniper=3.0.1"],
+        &["builds", "sniper=3.0.1"],
+    ] {
+        let message = error(args).render().to_string();
+        assert!(
+            message.contains("takes runtime names, not builds"),
+            "{message}"
         );
     }
-
-    #[test]
-    fn options_after_targets() {
-        assert_eq!(
-            resolve(&["-S", "sniper", "--needed"]),
-            resolve(&["-S", "--needed", "sniper"])
-        );
-        assert_eq!(
-            resolve(&["-S", "sniper", "-w"]),
-            resolve(&["-Sw", "sniper"])
-        );
-    }
-
-    #[test]
-    fn refresh() {
-        assert_eq!(resolve(&["-Sy"]), sync(1, SyncAction::RefreshOnly));
-        assert_eq!(resolve(&["-Syy"]), sync(2, SyncAction::RefreshOnly));
-        assert_eq!(resolve(&["-Syyy"]), sync(2, SyncAction::RefreshOnly));
-    }
-
-    #[test]
-    fn upgrades() {
-        assert_eq!(resolve(&["-Su"]), sync(0, upgrade(&[], false, false)));
-        assert_eq!(
-            resolve(&["-Syu", "sniper"]),
-            sync(1, upgrade(&["sniper"], false, false))
-        );
-        assert_eq!(resolve(&["-Syuu"]), sync(1, upgrade(&[], true, false)));
-        assert_eq!(resolve(&["-Suw"]), sync(0, upgrade(&[], false, true)));
-    }
-
-    #[test]
-    fn search() {
-        assert_eq!(
-            resolve(&["-Ss"]),
-            sync(
-                0,
-                SyncAction::Search {
-                    terms: vec![],
-                    packages: false
-                }
-            )
-        );
-        assert_eq!(
-            resolve(&["-Ss", "--pkg", "mesa"]),
-            sync(
-                0,
-                SyncAction::Search {
-                    terms: strings(&["mesa"]),
-                    packages: true
-                }
-            )
-        );
-    }
-
-    #[test]
-    fn info_list_clean() {
-        assert_eq!(
-            resolve(&["-Si", "sniper"]),
-            sync(
-                0,
-                SyncAction::Info {
-                    targets: vec![rt("sniper")],
-                    packages: false
-                }
-            )
-        );
-        assert_eq!(
-            resolve(&["-Sii", "sniper=3.0.1"]),
-            sync(
-                0,
-                SyncAction::Info {
-                    targets: vec![rt("sniper=3.0.1")],
-                    packages: true
-                }
-            )
-        );
-        assert_eq!(
-            resolve(&["-Sl"]),
-            sync(0, SyncAction::List { targets: vec![] })
-        );
-        assert_eq!(
-            resolve(&["-Sl", "scout"]),
-            sync(
-                0,
-                SyncAction::List {
-                    targets: strings(&["scout"])
-                }
-            )
-        );
-        assert_eq!(resolve(&["-Sc"]), sync(0, SyncAction::Clean { all: false }));
-        assert_eq!(resolve(&["-Scc"]), sync(0, SyncAction::Clean { all: true }));
-    }
-
-    #[test]
-    fn sync_errors() {
-        assert_eq!(error(&["-S"]), "no targets specified (use -h for help)");
-        assert_eq!(error(&["-Sk"]), "invalid option '-k' for -S");
-        assert_eq!(
-            error(&["-Ssi"]),
-            "invalid option: '-s' and '-i' may not be used together"
-        );
-        assert_eq!(
-            error(&["-Ss", "--needed"]),
-            "invalid option '--needed' for -Ss"
-        );
-        assert_eq!(
-            error(&["-Su", "--needed"]),
-            "invalid option '--needed' for -Su"
-        );
-        assert_eq!(
-            error(&["-S", "--pkg", "x"]),
-            "invalid option '--pkg' for -S"
-        );
-        assert_eq!(error(&["-Sc", "sniper"]), "-Sc takes no targets");
-        assert_eq!(
-            error(&["-Su", "sniper=3.0.1"]),
-            "-Su takes runtime names, not builds: 'sniper=3.0.1'"
-        );
-        assert!(error(&["-S", "sniper=nope"]).starts_with("invalid runtime 'sniper=nope'"));
-    }
-
-    #[cfg(feature = "json")]
-    #[test]
-    fn json_on_sl_only() {
-        resolve(&["-Sl", "--json"]);
-        assert_eq!(error(&["-Ss", "--json"]), "invalid option '--json' for -Ss");
-    }
-
-    #[test]
-    fn query_upgradable() {
-        assert_eq!(
-            resolve(&["-Qu"]),
-            Operation::Query(Query::Upgradable { targets: vec![] })
-        );
-    }
+    assert_eq!(
+        error(&["install"]).kind(),
+        ErrorKind::MissingRequiredArgument
+    );
 }
 
 #[test]
-fn query() {
+fn runtime_commands() {
     assert_eq!(
-        resolve(&["-Q"]),
-        Operation::Query(Query::List {
-            targets: vec![],
-            quiet: false
-        })
+        plain(&["remove", "scout", "soldier=2.0.1"]),
+        Cmd::Remove {
+            targets: vec![rt("scout"), rt("soldier=2.0.1")],
+            force: false,
+        }
     );
     assert_eq!(
-        resolve(&["-Qq", "sniper"]),
-        Operation::Query(Query::List {
-            targets: vec![rt("sniper")],
-            quiet: true
-        })
+        plain(&["remove", "--force", "scout"]),
+        Cmd::Remove {
+            targets: vec![rt("scout")],
+            force: true,
+        }
     );
     assert_eq!(
-        resolve(&["-Qi", "sniper"]),
-        Operation::Query(Query::Info {
-            targets: vec![rt("sniper")]
-        })
-    );
-    assert_eq!(
-        resolve(&["-Qk"]),
-        Operation::Query(Query::Check {
-            targets: vec![],
-            full: false
-        })
-    );
-    assert_eq!(
-        resolve(&["-Qkk", "sniper"]),
-        Operation::Query(Query::Check {
-            targets: vec![rt("sniper")],
-            full: true
-        })
-    );
-    assert_eq!(
-        resolve(&["-Ql", "sniper"]),
-        Operation::Query(Query::Files {
-            targets: vec![rt("sniper")]
-        })
-    );
-    assert_eq!(error(&["-Ql"]), "no targets specified (use -h for help)");
-    assert_eq!(
-        error(&["-Qik"]),
-        "invalid option: '-i' and '-k' may not be used together"
-    );
-    assert_eq!(error(&["-Qy"]), "invalid option '-y' for -Q");
-}
-
-#[test]
-fn remove() {
-    assert_eq!(
-        resolve(&["-R", "sniper=3.0.1"]),
-        Operation::Remove {
+        plain(&["info", "sniper=3.0.1", "--packages"]),
+        Cmd::Info {
             targets: vec![rt("sniper=3.0.1")],
-            nodeps: 0
+            packages: true,
+        }
+    );
+    assert_eq!(plain(&["runtimes"]), Cmd::Runtimes { quiet: false });
+    assert_eq!(plain(&["runtimes", "-q"]), Cmd::Runtimes { quiet: true });
+    assert_eq!(plain(&["-q", "runtimes"]), Cmd::Runtimes { quiet: true });
+    assert_eq!(
+        plain(&["files", "sniper"]),
+        Cmd::Files {
+            runtime: rt("sniper")
         }
     );
     assert_eq!(
-        resolve(&["-Rdd", "sniper"]),
-        Operation::Remove {
+        plain(&["verify"]),
+        Cmd::Verify {
+            targets: Vec::new(),
+            full: false,
+        }
+    );
+    assert_eq!(
+        plain(&["verify", "sniper", "--full"]),
+        Cmd::Verify {
             targets: vec![rt("sniper")],
-            nodeps: 2
-        }
-    );
-    assert_eq!(error(&["-R"]), "no targets specified (use -h for help)");
-}
-
-#[test]
-fn local_install() {
-    assert_eq!(
-        resolve(&["-U", "sniper.tar.xz", "/abs/SteamLinuxRuntime_sniper"]),
-        Operation::LocalInstall {
-            sources: vec![
-                PathBuf::from("/work/sniper.tar.xz"),
-                PathBuf::from("/abs/SteamLinuxRuntime_sniper")
-            ],
-            link: false
+            full: true,
         }
     );
     assert_eq!(
-        resolve(&["-U", "--link", "~/steamrt3"]),
-        Operation::LocalInstall {
-            sources: vec![PathBuf::from("/home/u/steamrt3")],
-            link: true
+        plain(&["import", "SteamLinuxRuntime_sniper", "--link"]),
+        Cmd::Import {
+            sources: vec!["SteamLinuxRuntime_sniper".into()],
+            link: true,
         }
     );
-}
 
-fn run(target: &str, args: &[&str], profile: Option<&str>, wait: bool, debug: bool) -> Operation {
-    Operation::Exec(Exec::Run(Run {
-        target: target.to_owned(),
-        args: strings(args),
-        profile: profile.map(str::to_owned),
-        wait,
-        debug,
-    }))
-}
-
-#[test]
-fn bare_targets_run() {
-    assert_eq!(
-        resolve(&["hollow-knight"]),
-        run("hollow-knight", &[], None, false, false)
-    );
-    assert_eq!(
-        resolve(&["-p", "scout", "./hollow_knight.x86_64"]),
-        run("./hollow_knight.x86_64", &[], Some("scout"), false, false)
-    );
-    assert_eq!(
-        resolve(&["--wait", "--debug", "game", "-force-vulkan", "--wait", "-S"]),
-        run("game", &["-force-vulkan", "--wait", "-S"], None, true, true)
-    );
+    for args in [&["remove"][..], &["info"], &["files"], &["import"]] {
+        assert_eq!(
+            error(args).kind(),
+            ErrorKind::MissingRequiredArgument,
+            "{args:?}"
+        );
+    }
+    let message = error(&["remove", "Bad Name"]).render().to_string();
+    assert!(message.contains("invalid value 'Bad Name'"), "{message}");
+    let message = error(&["info", "sniper=x"]).render().to_string();
+    assert!(message.contains("is not a build id"), "{message}");
 }
 
 #[test]
-fn exec() {
+fn running() {
     assert_eq!(
-        resolve(&["-X", "-p", "sniper", "./game", "-v"]),
-        run("./game", &["-v"], Some("sniper"), false, false)
+        plain(&["run", "hollow-knight"]),
+        Cmd::Run(Run {
+            game: "hollow-knight".into(),
+            args: Vec::new(),
+            profile: None,
+            mode: LaunchMode::Detach,
+            debug: false,
+        })
     );
-    assert_eq!(resolve(&["-X", "game"]), resolve(&["game"]));
+    // Everything after `--` is the game's, `-` options included.
     assert_eq!(
-        resolve(&["-X", "-p", "sniper", "--shell"]),
-        Operation::Exec(Exec::Shell {
-            profile: "sniper".into(),
+        plain(&[
+            "run", "-p", "scout", "--wait", "--debug", "hk", "--", "-x", "--wait"
+        ]),
+        Cmd::Run(Run {
+            game: "hk".into(),
+            args: strings(&["-x", "--wait"]),
+            profile: Some("scout".into()),
+            mode: LaunchMode::Wait,
+            debug: true,
+        })
+    );
+    assert_eq!(
+        plain(&["execute", "-p", "sniper", "./setup.sh", "--", "--silent"]),
+        Cmd::Execute(Execute {
+            target: "./setup.sh".into(),
+            args: strings(&["--silent"]),
+            profile: Some("sniper".into()),
+            mode: LaunchMode::Detach,
+            debug: false,
+        })
+    );
+    assert_eq!(
+        plain(&["execute", "glxgears", "--wait"]),
+        Cmd::Execute(Execute {
+            target: "glxgears".into(),
+            args: Vec::new(),
+            profile: None,
+            mode: LaunchMode::Wait,
+            debug: false,
+        })
+    );
+    assert_eq!(
+        plain(&["shell"]),
+        Cmd::Shell {
+            profile: None,
             debug: false
-        })
+        }
     );
-    assert_eq!(resolve(&["-Xs"]), Operation::Exec(Exec::Status));
     assert_eq!(
-        resolve(&["-Xk", "hollow-knight", "1234"]),
-        Operation::Exec(Exec::Stop {
-            targets: strings(&["hollow-knight", "1234"])
-        })
-    );
-    assert_eq!(resolve(&["-Xkk"]), Operation::Exec(Exec::StopAll));
-}
-
-#[test]
-fn shell_uses_the_default_profile() {
-    assert_eq!(
-        resolve_with(&["-X", "--shell", "--debug"], Some("soldier")).unwrap(),
-        Operation::Exec(Exec::Shell {
-            profile: "soldier".into(),
+        plain(&["shell", "--profile", "scout", "--debug"]),
+        Cmd::Shell {
+            profile: Some("scout".into()),
             debug: true
-        })
+        }
     );
     assert_eq!(
-        error(&["--shell"]),
-        "--shell needs a profile: -p <profile>, or default_profile in config.toml"
+        plain(&["stop", "hk", "sniper", "1234"]),
+        Cmd::Stop {
+            targets: strings(&["hk", "sniper", "1234"])
+        }
     );
-}
+    assert_eq!(plain(&["killall"]), Cmd::Killall);
 
-#[test]
-fn exec_errors() {
-    assert_eq!(error(&["-X"]), "no targets specified (use -h for help)");
-    assert_eq!(error(&["-Xs", "--wait"]), "invalid option '--wait' for -Xs");
-    assert_eq!(error(&["-Xk"]), "no targets specified (use -h for help)");
-    assert_eq!(error(&["-Xkk", "game"]), "-Xkk takes no targets");
+    // A game name never runs a path (D10), and game arguments need `--`.
+    let message = error(&["run", "./game"]).render().to_string();
+    assert!(message.contains("invalid value './game'"), "{message}");
     assert_eq!(
-        error(&["-X", "--shell", "-p", "sniper", "game"]),
-        "--shell takes no targets"
+        error(&["run", "hk", "-x"]).kind(),
+        ErrorKind::UnknownArgument
     );
-    assert_eq!(
-        error(&["-X", "--shell", "-p", "sniper", "--wait"]),
-        "invalid option '--wait' for --shell"
-    );
-    assert!(error(&["-p", "../x", "game"]).starts_with("invalid profile:"));
+    assert_eq!(error(&["stop"]).kind(), ErrorKind::MissingRequiredArgument);
+    assert_eq!(error(&["killall", "hk"]).kind(), ErrorKind::UnknownArgument);
 }
 
 #[test]
 fn games() {
+    assert_eq!(plain(&["list"]), Cmd::List);
+    assert_eq!(plain(&["show", "hk"]), Cmd::Show { game: "hk".into() });
     assert_eq!(
-        resolve(&["-G"]),
-        Operation::Games(Games::List { targets: vec![] })
+        plain(&["check"]),
+        Cmd::Check {
+            targets: Vec::new()
+        }
     );
     assert_eq!(
-        resolve(&["-Gi", "hollow-knight"]),
-        Operation::Games(Games::Info {
-            targets: strings(&["hollow-knight"])
-        })
+        plain(&["check", "hk", "scout"]),
+        Cmd::Check {
+            targets: strings(&["hk", "scout"])
+        }
     );
     assert_eq!(
-        resolve(&["-Gk"]),
-        Operation::Games(Games::Check { targets: vec![] })
+        plain(&["logs", "hk"]),
+        Cmd::Logs {
+            game: "hk".into(),
+            path_only: false
+        }
     );
-    assert_eq!(resolve(&["-Ge"]), Operation::Games(Games::Edit));
     assert_eq!(
-        resolve(&["-Gl", "hk", "--path"]),
-        Operation::Games(Games::Log {
+        plain(&["logs", "hk", "--path"]),
+        Cmd::Logs {
             game: "hk".into(),
             path_only: true
-        })
+        }
     );
-    assert_eq!(error(&["-Gl"]), "-Gl takes exactly one game");
     assert_eq!(
-        error(&["-Gi", "--path", "hk"]),
-        "invalid option '--path' for -Gi"
+        plain(&["init", "scout"]),
+        Cmd::Init {
+            profile: "scout".into()
+        }
     );
-    assert_eq!(error(&["-Ge", "hk"]), "-Ge takes no targets");
+    assert_eq!(error(&["show"]).kind(), ErrorKind::MissingRequiredArgument);
 }
 
 #[test]
 fn profiles() {
+    assert_eq!(plain(&["profiles", "list"]), Cmd::Profiles(Profiles::List));
     assert_eq!(
-        resolve(&["-P"]),
-        Operation::Profiles(Profiles::List { targets: vec![] })
-    );
-    assert_eq!(
-        resolve(&["-Pi", "sniper"]),
-        Operation::Profiles(Profiles::Info {
-            targets: strings(&["sniper"])
+        plain(&["profiles", "show", "scout"]),
+        Cmd::Profiles(Profiles::Show {
+            name: "scout".into()
         })
     );
     assert_eq!(
-        resolve(&["-Pk"]),
-        Operation::Profiles(Profiles::Check { targets: vec![] })
-    );
-    assert_eq!(
-        resolve(&["-Pn", "hk", "-r", "scout"]),
-        Operation::Profiles(Profiles::New {
-            name: "hk".into(),
-            runtime: rt("scout"),
-            prefix: None
+        plain(&["profiles", "new", "indie", "--runtime", "sniper"]),
+        Cmd::Profiles(Profiles::New {
+            name: "indie".into(),
+            runtime: rt("sniper"),
+            mode: SlrMode::Container,
+            prefix: None,
         })
     );
     assert_eq!(
-        resolve(&["-Pn", "hk", "-r", "scout", "--prefix", "pfx"]),
-        Operation::Profiles(Profiles::New {
-            name: "hk".into(),
-            runtime: rt("scout"),
-            prefix: Some(PathBuf::from("/work/pfx"))
+        plain(&[
+            "profiles",
+            "new",
+            "host",
+            "-r",
+            "steamrt4=4.0.1",
+            "--mode",
+            "overlay",
+            "--prefix",
+            "~/p",
+        ]),
+        Cmd::Profiles(Profiles::New {
+            name: "host".into(),
+            runtime: rt("steamrt4=4.0.1"),
+            mode: SlrMode::Overlay,
+            prefix: Some("~/p".into()),
         })
     );
     assert_eq!(
-        resolve(&["-Pe", "hk"]),
-        Operation::Profiles(Profiles::Edit { name: "hk".into() })
-    );
-    assert_eq!(
-        resolve(&["-Pd", "hk"]),
-        Operation::Profiles(Profiles::Delete {
-            targets: strings(&["hk"]),
-            prefix: false
+        plain(&["profiles", "edit", "indie"]),
+        Cmd::Profiles(Profiles::Edit {
+            name: "indie".into()
         })
     );
     assert_eq!(
-        resolve(&["-Pdd", "hk"]),
-        Operation::Profiles(Profiles::Delete {
-            targets: strings(&["hk"]),
-            prefix: true
+        plain(&["profiles", "edit-games"]),
+        Cmd::Profiles(Profiles::EditGames)
+    );
+    assert_eq!(
+        plain(&["profiles", "delete", "a", "b", "--prefix"]),
+        Cmd::Profiles(Profiles::Delete {
+            names: strings(&["a", "b"]),
+            prefix: true,
         })
     );
-}
 
-#[test]
-fn profile_errors() {
     assert_eq!(
-        error(&["-Pn", "hk"]),
-        "-Pn needs a runtime: sruman -Pn hk -r <runtime>"
+        error(&["profiles", "new", "indie"]).kind(),
+        ErrorKind::MissingRequiredArgument
     );
     assert_eq!(
-        error(&["-Pn", "-r", "scout"]),
-        "-Pn takes exactly one profile"
+        error(&[
+            "profiles", "new", "indie", "-r", "sniper", "--mode", "chroot"
+        ])
+        .kind(),
+        ErrorKind::InvalidValue
     );
     assert_eq!(
-        error(&["-Pi", "-r", "scout"]),
-        "invalid option '-r' for -Pi"
+        error(&["profiles", "delete"]).kind(),
+        ErrorKind::MissingRequiredArgument
     );
     assert_eq!(
-        error(&["-Pd", "--prefix", "/p", "hk"]),
-        "invalid option '--prefix' for -Pd"
+        error(&["profiles"]).kind(),
+        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
     );
-    assert_eq!(error(&["-Pe"]), "-Pe takes exactly one profile");
-    assert_eq!(error(&["-Pd"]), "no targets specified (use -h for help)");
-    assert_eq!(
-        error(&["-Pne", "hk"]),
-        "invalid option: '-e' and '-n' may not be used together"
-    );
-    assert!(error(&["-Pi", "a/b"]).starts_with("invalid profile:"));
 }
 
 #[cfg(feature = "diag")]
 #[test]
 fn doctor() {
-    assert_eq!(resolve(&["-D"]), Operation::Doctor { runtimes: vec![] });
     assert_eq!(
-        resolve(&["-D", "scout"]),
-        Operation::Doctor {
-            runtimes: vec![rt("scout")]
+        plain(&["doctor"]),
+        Cmd::Doctor {
+            runtimes: Vec::new()
         }
     );
-    assert_eq!(error(&["-Dk"]), "invalid option '-k' for -D");
-}
-
-#[test]
-fn one_operation_at_a_time() {
     assert_eq!(
-        error(&["-QR", "sniper"]),
-        "only one operation may be used at a time"
+        plain(&["doctor", "scout", "sniper"]),
+        Cmd::Doctor {
+            runtimes: vec![rt("scout"), rt("sniper")]
+        }
     );
-}
-
-#[test]
-fn modifiers_need_an_operation() {
-    assert_eq!(
-        error(&["-k"]),
-        "invalid option '-k' without an operation (use -h for help)"
-    );
-    #[cfg(not(feature = "download"))]
-    assert_eq!(error(&[]), "no operation specified (use -h for help)");
 }
 
 #[cfg(feature = "json")]
 #[test]
-fn json_where_supported() {
-    for args in [
-        &["-Q", "--json"][..],
-        &["-Qi", "--json"],
-        &["-P", "--json"],
-        &["-Pi", "--json"],
-        &["-G", "--json"],
-        &["-Gi", "hk", "--json"],
-        &["-Xs", "--json"],
-    ] {
-        resolve(args);
+fn json_only_where_the_plan_lists_it() {
+    #[cfg_attr(not(feature = "download"), allow(unused_mut))]
+    let mut with_json = vec![
+        &["info", "sniper"][..],
+        &["runtimes"],
+        &["status"],
+        &["list"],
+        &["show", "hk"],
+        &["profiles", "list"],
+        &["profiles", "show", "p"],
+        &["provide-umu", "sniper"],
+        &["provide-umu", "--appid", "1628350"],
+    ];
+    #[cfg(feature = "download")]
+    with_json.extend([&["builds", "sniper"][..], &["outdated"]]);
+    for args in with_json {
+        let mut args = args.to_vec();
+        args.push("--json");
+        assert!(cmd(&args).1, "{args:?}");
     }
-    assert_eq!(error(&["-Qk", "--json"]), "invalid option '--json' for -Qk");
-    assert_eq!(error(&["--json", "game"]), "invalid option '--json' for -X");
+    #[cfg_attr(not(feature = "download"), allow(unused_mut))]
+    let mut without = vec![
+        &["remove", "x"][..],
+        &["verify"],
+        &["files", "x"],
+        &["check"],
+        &["killall"],
+        &["profiles", "edit-games"],
+    ];
+    #[cfg(feature = "download")]
+    without.extend([&["install", "x"][..], &["sync"], &["search"], &["clean"]]);
+    for args in without {
+        let mut args = args.to_vec();
+        args.push("--json");
+        assert_eq!(error(&args).kind(), ErrorKind::UnknownArgument, "{args:?}");
+    }
 }
 
 #[test]
-fn globals() {
+fn global_options_go_anywhere() {
     let options = parse(&[
-        "--noconfirm",
-        "--color",
-        "never",
-        "-vv",
-        "--config",
-        "c.toml",
-        "-Q",
+        "--color", "never", "runtimes", "-y", "-vv", "--config", "c.toml",
     ])
     .unwrap();
-    assert!(options.noconfirm);
     assert_eq!(options.color, Some(ColorChoice::Never));
+    assert!(options.yes);
     assert_eq!(options.verbose, 2);
-    assert_eq!(options.config, Some(PathBuf::from("c.toml")));
+    assert_eq!(options.config, Some("c.toml".into()));
+    assert!(!options.quiet && !options.json);
+
+    assert_eq!(
+        error(&["--color", "sometimes", "runtimes"]).kind(),
+        ErrorKind::InvalidValue
+    );
+    assert_eq!(
+        error(&["-S"]).kind(),
+        ErrorKind::UnknownArgument,
+        "no pacman flags"
+    );
+    assert_eq!(error(&["frobnicate"]).kind(), ErrorKind::InvalidSubcommand);
 }
 
 #[test]
-fn clap_rejects_unknown_flags() {
-    assert!(parse(&["-Qz"]).is_err());
-    assert!(parse(&["--color", "rainbow", "-Q"]).is_err());
+fn the_definition_is_consistent() {
+    use clap::CommandFactory;
+    Cli::command().debug_assert();
+}
+
+#[test]
+fn provide_umu_takes_a_runtime_or_an_app_id() {
+    assert_eq!(
+        cmd(&["provide-umu", "sniper=3.0.1"]).0,
+        Cmd::ProvideUmu {
+            runtime: Some("sniper=3.0.1".parse().unwrap()),
+            app_id: None,
+        }
+    );
+    assert_eq!(
+        cmd(&["provide-umu", "--appid", "4183110"]).0,
+        Cmd::ProvideUmu {
+            runtime: None,
+            app_id: Some(4_183_110),
+        }
+    );
+    for args in [
+        &["provide-umu"][..],
+        &["provide-umu", "sniper", "--appid", "1"],
+        &["provide-umu", "--appid", "x"],
+    ] {
+        assert!(parse(args).is_err(), "{args:?}");
+    }
 }

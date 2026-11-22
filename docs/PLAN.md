@@ -237,14 +237,14 @@ Bare `sruman` prints the help.
 | `sync [--force]`                          | Refresh the sync index (pointer `.txt`s, `VERSION.txt`, `SHA256SUMS`, manifests); `--force` even if `update-timestamp.txt` is unchanged |
 | `install <rt>[=build]… [--needed] [--download-only]` | Install with dependencies. Transaction summary + `Proceed with installation? [Y/n]`                                          |
 | `upgrade [rt…] [--sync] [--allow-downgrade]` | Upgrade installed runtimes (all, or the named ones), with the package changelog from the manifest diff; `--sync` refreshes first |
-| `outdated`                                | Upgradable runtimes, `old -> new`                                                                                                     |
+| `outdated [rt…]`                          | Upgradable runtimes (all installed, or the named ones), `old -> new`                                                                  |
 | `remove <rt>[=build]… [--force]`          | Remove. Refuses if a profile uses it or it's running; `--force` skips the profile check (never removes a build in use)               |
-| `search [regex] [--packages]`             | Search runtime names/descriptions, or with `--packages` the package manifests (`search --packages mesa`)                              |
-| `info <rt>[=build] [--packages]`          | Build, channel, sizes, os-release, date, `depends`, and if installed **Required by** (profiles, running games); `--packages` lists packages |
+| `search [text] [--packages]`              | Case-insensitive substring search of runtime names/descriptions, or with `--packages` the package manifests (`search --packages mesa`) |
+| `info <rt>[=build]… [--packages]`         | Build, channel, sizes, os-release, date, `depends`, and if installed **Required by** (profiles, running games); `--packages` lists packages |
 | `runtimes [--quiet]`                      | Installed runtimes as `name build` (`--quiet`: names only)                                                                            |
 | `builds <rt>`                             | Available builds on the server, installed ones marked                                                                                 |
 | `files <rt>`                              | List an installed build's files                                                                                                       |
-| `verify <rt> [--full]`                    | Check an installed build: files present / content hashes (`mtree.txt.gz`)                                                             |
+| `verify [rt…] [--full]`                   | Check installed builds (all without arguments): files present / content hashes (`mtree.txt.gz`)                                      |
 | `clean [--all]`                           | Download cache of uninstalled builds / all archives; builds beyond `keep_versions` that aren't pinned or in use                      |
 | `import <archive\|dir> [--link]`          | Install from a local archive or directory (Steam's `SteamLinuxRuntime_sniper`, umu's `steamrt3`); `--link` registers it in place     |
 | `provide-umu <rt>[=build] \| --appid <id> [--json]` | Make the runtime umu's `<variant>` folder under `$XDG_DATA_HOME/sruman/umu/` (D15); prints the folders path and the build's hold lock |
@@ -268,7 +268,7 @@ Bare `sruman` prints the help.
 | `profiles new <P> --runtime <rt> [--mode container\|overlay] [--prefix <dir>]` | New profile file, then `init`. An existing `--prefix` is reused, not reset          |
 | `profiles edit <P>` / `edit-games`             | Open the profile / `games.toml` in `$EDITOR`, then validate it                                            |
 | `profiles delete <P> [--prefix]`               | Delete the profile file; `--prefix` also deletes its prefix, unless shared or in use                     |
-| `doctor`                                       | User namespaces/bwrap, AppArmor userns restriction, the runtime's `steam-runtime-system-info`            |
+| `doctor [rt…]`                                 | User namespaces/bwrap, AppArmor userns restriction, each runtime's `steam-runtime-system-info`           |
 
 Global options: `-y`/`--yes` (no prompts), `--color auto|always|never`,
 `-q`, `-v`/`-vv`, `--config <file>`, and `--json` on `runtimes`, `info`,
@@ -498,13 +498,14 @@ auto_install = false          # missing runtime at launch: false → [Y/n] promp
 | `libsruman` | `download` | yes     | xz decoder, `tar`                          | `Fetch` trait, sync index, install, upgrade |
 | `libsruman` | `ureq`     | yes     | `ureq` (rustls on ring, webpki roots); implies `download` | `UreqFetch`, the default `Fetch` (gaki enables only `download` and brings its own client) |
 | `libsruman` | `diag`     | no      | `serde_json` (system-info's report)       | doctor checks                            |
-| `sruman`    | `download` | yes     | `libsruman/download`                       | `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`  |
+| `sruman`    | `download` | yes     | `libsruman/download`                       | `sync`, `install`, `upgrade`, `outdated`, `builds`, `clean`; D12's install at launch |
 | `sruman`    | `json`     | yes     | `serde_json`                               | `--json`                                 |
-| `sruman`    | `diag`     | yes     | `libsruman/diag`                           | `-D`                                     |
+| `sruman`    | `diag`     | yes     | `libsruman/diag`                           | `doctor`                                 |
 
 `serde` is not optional in `libsruman`: profiles, state files and the index
-all need it. `--no-default-features` still gives `-Q`, `-R`, `-U`, `-P`, `-X`
-on runtimes Steam or umu installed. Choose the xz crate in step 2.4 under
+all need it. `--no-default-features` still gives `runtimes`, `remove`,
+`import`, `profiles`, `run`/`execute` and the rest on runtimes Steam or umu
+installed. Choose the xz crate in step 2.4 under
 ARCHITECTURE §7.2, preferring pure Rust (check whether gaki's `lzma-rust2`
 reads `.xz`) over `xz2`/C liblzma.
 
@@ -1036,24 +1037,42 @@ before the binary, and Phase 4's commands get modes for free.
       target for tests, and features `json` and `diag` (default on). 48
       tests: the full grammar from argv, config merging, errors naming the
       file and key.
-- [ ] **4.1b** Redo 4.1 for D9's subcommands: a clap `Command` enum with
+- [x] **4.1b** Redo 4.1 for D9's subcommands: a clap `Command` enum with
       one variant per command and its own options (see "CLI"), `settings/`
       reduced to merging flags, `config.toml` and defaults. Rewrite the parse
       tests from the CLI tables, keep the config tests. Update the user-facing
       hints in `libsruman` that name pacman commands (`sruman -S`, `-Sy`,
       `-Qkk`, `-D`; ten strings) and the README quick start.
-- [ ] **4.2** `logger/`: tracing to stderr (`-v`) and a daily file, as in
+- [x] **4.2** `logger/`: tracing to stderr (`-v`) and a daily file, as in
       lootrs.
-- [ ] **4.3** `output/`: the transaction look (`resolving dependencies...`,
+      _Done 2026-11-22:_ `sruman.<date>.log` in the logs dir at `log_level`,
+      `log_keep` files; `-v`/`-vv` mirror it to stderr as
+      `sruman: <level>: …`.
+- [x] **4.3** `output/`: the transaction look (`resolving dependencies...`,
       transaction table, sizes, `[Y/n]` prompts honoring
       `--noconfirm`, multi-bar download progress on stderr, colors with TTY
       detection) and `--json` serializers. Hand-rolled unless a maintained,
       light crate clearly pays for itself (§7.2).
-- [ ] **4.4** `app/commands`: one module per group of commands (runtimes:
+      _Done 2026-11-22:_ hand-rolled `Printer`: results on stdout, warnings,
+      errors and progress on stderr, colors per stream; `confirm` takes the
+      default with `-y` or without a terminal (as pacman); the progress bar
+      implements `libsruman::progress::Progress`, redrawing one line on a
+      terminal and printing one line per phase otherwise. One bar at a time:
+      downloads run one after another.
+- [x] **4.4** `app/commands`: one module per group of commands (runtimes:
       sync/install/upgrade/remove/search/info/…; games and running;
       profiles; doctor). Thin over `libsruman`.
       `exec` handles D12: an install prompt, then the launch.
-- [ ] **4.5** `app/supervisor`: spawn the `LaunchSpec` with `setsid`,
+      _Done 2026-11-22._ Deviations from the tables: `search` takes a
+      case-insensitive substring, not a regex (no `regex` dependency for
+      it); `outdated`, `verify` and `doctor` take optional runtimes (all
+      installed by default); `profiles new` without `--prefix` gives a
+      container profile `prefix_root/<name>` and an overlay profile no prefix
+      (it runs in the real home). `TxOptions` gained per-runtime `channels`,
+      so `[channels]` applies to dependencies too. D12 asks once ("Install
+      it now?") and then installs without a second `Proceed?`. `upgrade
+      --sync` still upgrades when some index failed to refresh, but exits 1.
+- [x] **4.5** `app/supervisor`: spawn the `LaunchSpec` with `setsid`,
       detached by default or `--wait`. Per-run logs in lootrs' runlog format
       (command, env set, runtime build + os-release, system header, output,
       exit status) with `log_keep` rotation, in `logs/games/<game>/` (with a
@@ -1063,10 +1082,21 @@ before the binary, and Phase 4's commands get modes for free.
       follow the open file, so even a `CLOEXEC` fd stays locked in the child
       until its exec, and an inherited non-`CLOEXEC` one for the whole run.
       Only the `BuildHold` and `PrefixLock` fds are passed on purpose.
-- [ ] **4.6** `tests/cli.rs`: parse matrix, `check` on examples, and
+      _Done 2026-11-22:_ detached runs re-execute sruman with a hidden
+      `--supervised`; the supervisor calls `setsid`, reports
+      `ok<TAB>pid<TAB>log` or `error<TAB>code` and a message on its stdout,
+      and stays to write the log footer. The game gets its own process
+      group, so `stop` never kills the supervisor. A per-game lock file
+      closes the race between two `run`s of one game. `wrap` no longer
+      shares paths pressure-vessel reserves (`/usr`, `/bin`, `/etc`, …): an
+      `execute /bin/echo` used to warn.
+- [x] **4.6** `tests/cli.rs`: parse matrix, `check` on examples, and
       `sruman run <game>` / `sruman execute <path>` (both modes) against a fake runtime whose `run` is a script echoing argv/env, run
       against the fixture HTTP server from 2.6 for `install`/`upgrade --sync`.
-- [ ] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
+      _Done 2026-11-22:_ six tests in private XDG dirs (the HTTP one needs
+      `download`); the fixture server and image builder are included from
+      `libsruman/tests/support` by `#[path]`.
+- [x] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
       of their runtime (soldier 1391110, sniper 1628350, steamrt4 4183110)
       for `--appid`. The view is built under the store lock in `.staging`
       and renamed into place; a view whose build is held is left alone.
@@ -1077,6 +1107,27 @@ before the binary, and Phase 4's commands get modes for free.
       offline. If pressure-vessel refuses the view,
       fall back to a hardlinked copy on the same filesystem. Tests with a fake
       build: layout, marker, repointing after an upgrade, held builds kept.
+      _Done 2026-11-22:_ `libsruman::umu` (`Folders::provide`), catalog
+      `app_id`, `Store::hold_file`. The view is staged next to it in
+      `umu/` (it must be on the view's filesystem, not the store's
+      `.staging`) and swapped in with `renameat2(RENAME_EXCHANGE)`, so
+      `umu/<variant>` stays a real directory, as umu makes it. The store
+      lock is taken only to change a view; an up-to-date view needs none,
+      so launches don't wait on installs. `--json` also gives `runtime`,
+      `dir` and `kept`. Checked with umu 1.4.4 and dwproton
+      (`require_tool_appid` 4183110), online and offline (an unreachable
+      proxy): umu takes the view as installed, skips updates, downloads
+      nothing, writes only `umu/umu-shim` beside it, and starts
+      pressure-vessel from the real build; no fallback copy was needed.
+      The game itself couldn't be checked from the test shell, where wine
+      doesn't start even on the host (`could not load kernel32.dll`), with
+      umu's own folder alike; a launch from a desktop session is left to
+      check. (pressure-vessel warns that it won't share a Proton under
+      `/usr` through `STEAM_COMPAT_MOUNTS`; whether that matters wasn't
+      settled.) A
+      small window remains between `provide-umu` returning and lootrs
+      taking the hold; lootrs should check the view's build once it holds
+      it.
 
 ### Phase 5 — docs, audit and release
 

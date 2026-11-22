@@ -1,4 +1,4 @@
-//! Install transactions (pacman's `-S`): resolve targets and dependencies
+//! Install transactions (`install`): resolve targets and dependencies
 //! against the sync index and the store, show a summary, then for each item
 //! download into the package cache, verify against `SHA256SUMS`, extract
 //! into staging, and commit into the store.
@@ -8,6 +8,7 @@
 //! come first, so a failure never leaves a runtime without what it needs.
 
 use std::{
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -35,7 +36,7 @@ mod tests;
 pub enum InstallError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
-    #[error("`{0}` isn't in the sync index; run `sruman -Sy` first")]
+    #[error("`{0}` isn't in the sync index; run `sruman sync` first")]
     NotSynced(String),
     #[error("`{name}` has no {channel} build on the server")]
     NoChannelBuild { name: String, channel: Channel },
@@ -95,7 +96,7 @@ pub struct TxItem {
     pub url: String,
     /// The runtime's `current` build before the transaction.
     pub current: Option<BuildId>,
-    /// `Always` for a `-Suu` downgrade; `IfNewer` otherwise.
+    /// `Always` for an `upgrade --allow-downgrade` downgrade; `IfNewer` otherwise.
     pub make_current: MakeCurrent,
 }
 
@@ -117,13 +118,13 @@ impl TxItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
     /// That exact build is installed. (Builds never change, so there is
-    /// nothing to reinstall; `-Qkk` checks an installed build's files.)
+    /// nothing to reinstall; `verify --full` checks an installed build's files.)
     Installed,
     /// A dependency with some build installed already.
     DependencySatisfied,
-    /// `-Su`: `current` is the channel's build (or newer, without `-uu`).
+    /// `upgrade`: `current` is the channel's build (or newer, without `--allow-downgrade`).
     UpToDate,
-    /// `-Su`: the runtime isn't in the sync index (or the catalog).
+    /// `upgrade`: the runtime isn't in the sync index (or the catalog).
     NotSynced,
 }
 
@@ -134,9 +135,12 @@ pub struct Skipped {
     pub reason: SkipReason,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxOptions {
+    /// The channel of runtimes not in `channels`.
     pub channel: Channel,
+    /// Per-runtime channels (`[channels] sniper = "beta"`).
+    pub channels: BTreeMap<String, Channel>,
     pub arch: Arch,
     /// `-w`: download and verify into the cache, install nothing.
     pub download_only: bool,
@@ -147,9 +151,15 @@ impl TxOptions {
     pub fn new() -> Result<Self, InstallError> {
         Ok(Self {
             channel: Channel::Stable,
+            channels: BTreeMap::new(),
             arch: Arch::current().ok_or(InstallError::UnsupportedArch)?,
             download_only: false,
         })
+    }
+
+    /// The channel `runtime` follows.
+    pub fn channel_for(&self, runtime: &str) -> Channel {
+        self.channels.get(runtime).copied().unwrap_or(self.channel)
     }
 }
 
@@ -159,7 +169,7 @@ impl TxOptions {
 pub struct Transaction {
     /// In install order (dependencies first).
     pub items: Vec<TxItem>,
-    /// `-Su` where the channel's build is installed already: only
+    /// `upgrade` where the channel's build is installed already: only
     /// `current` moves. Applied before `items`.
     pub switches: Vec<Switch>,
     pub skipped: Vec<Skipped>,
@@ -174,7 +184,7 @@ pub struct Switch {
     pub to: BuildId,
 }
 
-/// Which runtimes `-Su` looks at.
+/// Which runtimes `upgrade` looks at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Upgrade {
     /// Every installed runtime.
@@ -236,7 +246,7 @@ fn channel_build(
 }
 
 impl Transaction {
-    /// Resolves `targets` (pacman's `-S`): each runtime at its pinned build
+    /// Resolves `targets` (`install`): each runtime at its pinned build
     /// or the channel's, after any missing dependency. A pinned build the
     /// index doesn't know is looked up on the server.
     pub fn install(
@@ -269,7 +279,7 @@ impl Transaction {
                 let index = sync_dir
                     .load(&def.name)
                     .ok_or_else(|| InstallError::NotSynced(def.name.clone()))?;
-                let build = channel_build(&index, &def.name, options.channel)?;
+                let build = channel_build(&index, &def.name, options.channel_for(&def.name))?;
                 tx.push(
                     fetch,
                     sync_dir,
@@ -289,7 +299,7 @@ impl Transaction {
                         let index = sync_dir
                             .load(&def.name)
                             .ok_or_else(|| InstallError::NotSynced(def.name.clone()))?;
-                        channel_build(&index, &def.name, options.channel)?
+                        channel_build(&index, &def.name, options.channel_for(&def.name))?
                     }
                 };
                 if installed.iter().any(|i| i.build == build) {
@@ -367,7 +377,7 @@ impl Transaction {
         self.items.is_empty() && self.switches.is_empty()
     }
 
-    /// Resolves pacman's `-Su`: for each runtime, the channel's build when
+    /// Resolves `upgrade`: for each runtime, the channel's build when
     /// it's newer than `current` (or older, with `allow_downgrade`).
     /// Builds that are installed already only move `current`.
     pub fn upgrade(
@@ -424,7 +434,7 @@ impl Transaction {
                 });
                 continue;
             };
-            let target = channel_build(&index, &def.name, options.channel)?;
+            let target = channel_build(&index, &def.name, options.channel_for(&def.name))?;
             let newer = current.as_ref().is_none_or(|c| target > *c);
             let older = current.as_ref().is_some_and(|c| target < *c);
             if !(newer || (older && upgrade.allow_downgrade)) {

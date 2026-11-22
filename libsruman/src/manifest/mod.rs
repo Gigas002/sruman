@@ -1,8 +1,8 @@
 //! A runtime build's package list: Valve's `*.manifest.dpkg`, with the
 //! Debian package and version of everything in the build.
 //!
-//! sruman uses it the way apt uses its index: `-Si`/`-Qi` list packages,
-//! upgrades show which packages change, and `-Ss --pkg` searches them.
+//! sruman uses it the way apt uses its index: `info --packages` lists packages,
+//! upgrades show which packages change, and `search --packages` searches them.
 
 use std::{collections::BTreeMap, fmt};
 
