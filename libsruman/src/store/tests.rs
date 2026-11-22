@@ -70,7 +70,7 @@ fn empty_store() {
     let err = store.resolve(&rref("sniper")).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "runtime `sniper` is not installed; install it with `sruman -S sniper`"
+        "runtime `sniper` is not installed; install it with `sruman install sniper`"
     );
 }
 
@@ -93,7 +93,7 @@ fn commit_tracks_current_and_resolves() {
     let err = store.resolve(&rref("sniper=3.0.99")).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "runtime `sniper` build 3.0.99 is not installed; install it with `sruman -S sniper=3.0.99`"
+        "runtime `sniper` build 3.0.99 is not installed; install it with `sruman install sniper=3.0.99`"
     );
 
     install(&store, &lock, "3.0.0", MakeCurrent::Always);

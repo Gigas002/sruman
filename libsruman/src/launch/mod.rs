@@ -5,7 +5,7 @@
 //!
 //! 1. [`prepare`] resolves everything (runtime builds, executable, working
 //!    directory, wrappers, env) and collects every problem at once. It only
-//!    reads the filesystem, so `--print`, `-Pk` and tests use it freely.
+//!    reads the filesystem, so `check` and tests use it freely.
 //! 2. [`LaunchPlan::acquire`] takes a shared hold on each runtime build and
 //!    sets up the prefix (its shared lock included), and returns the final
 //!    [`LaunchSpec`]. The caller spawns it, keeping [`Launch::fds`] open in
@@ -62,7 +62,7 @@ pub enum Target<'a> {
     /// An executable: a path (`~` allowed), or a bare name looked up in the
     /// runtime's `PATH`.
     Exe(&'a Path),
-    /// An interactive shell in the runtime (`-X --shell`).
+    /// An interactive shell in the runtime (`shell`).
     Shell,
 }
 
@@ -333,7 +333,7 @@ fn resolve_build(
         Ok(installed) => Some(installed),
         Err(_) => {
             problems.push(format!(
-                "runtime `{runtime}` is not installed; run `sruman -S {runtime}`"
+                "runtime `{runtime}` is not installed; run `sruman install {runtime}`"
             ));
             None
         }
@@ -361,7 +361,7 @@ pub fn resolve_runtimes(
     let marker = runtime.dir.join(def.entry.marker());
     if !is_executable(&marker) {
         problems.push(format!(
-            "{} {} is incomplete: {} is missing; check it with `sruman -Qkk {}`",
+            "{} {} is incomplete: {} is missing; check it with `sruman verify --full {}`",
             runtime.name,
             runtime.build,
             marker.display(),
@@ -389,7 +389,7 @@ pub fn resolve_runtimes(
             let run = host.dir.join(Entry::Container.marker());
             if !is_executable(&run) {
                 problems.push(format!(
-                    "{} {} is incomplete: {} is missing; check it with `sruman -Qkk {}`",
+                    "{} {} is incomplete: {} is missing; check it with `sruman verify --full {}`",
                     host.name,
                     host.build,
                     run.display(),
@@ -471,7 +471,7 @@ fn store_resolve_for(
         Ok(installed) => Some(installed),
         Err(_) => {
             problems.push(format!(
-                "`{needed_by}` runs inside `{runtime}`, which is not installed; run `sruman -S {runtime}`"
+                "`{needed_by}` runs inside `{runtime}`, which is not installed; run `sruman install {runtime}`"
             ));
             None
         }

@@ -29,9 +29,9 @@ tempfile.workspace = true
 
 [features]
 default = ["download", "json", "diag"]
-# `-S`, `-Sy`, `-Su`, `-Ss`, `-Si`, `-Sl`.
+# `sync`, `install`, `upgrade`, `outdated`, `search`, `builds`, `clean`.
 download = ["libsruman/download", "libsruman/ureq"]
 # `--json` output.
 json = ["dep:serde_json"]
-# `-D`: doctor checks.
+# `doctor`.
 diag = ["libsruman/diag"]

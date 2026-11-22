@@ -9,7 +9,7 @@
 //! and link is created here, in a fresh staging directory, with
 //! `create_new` semantics. Modes keep the permission bits only (no setuid,
 //! setgid or sticky), and the owner can always write, since pressure-vessel
-//! needs a writable build and `-R` must be able to delete it.
+//! needs a writable build and `remove` must be able to delete it.
 
 use std::{
     collections::HashSet,

@@ -1036,7 +1036,7 @@ before the binary, and Phase 4's commands get modes for free.
       target for tests, and features `json` and `diag` (default on). 48
       tests: the full grammar from argv, config merging, errors naming the
       file and key.
-- [ ] **4.1b** Redo 4.1 for D9's subcommands: a clap `Command` enum with
+- [x] **4.1b** Redo 4.1 for D9's subcommands: a clap `Command` enum with
       one variant per command and its own options (see "CLI"), `settings/`
       reduced to merging flags, `config.toml` and defaults. Rewrite the parse
       tests from the CLI tables, keep the config tests. Update the user-facing

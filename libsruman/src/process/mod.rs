@@ -1,4 +1,4 @@
-//! Running sessions (`-Xs`) and stopping them (`-Xk`), found by the tags
+//! Running sessions (`status`) and stopping them (`stop`), found by the tags
 //! [`crate::launch`] sets: `SRUMAN_GAME=<name>` or
 //! `SRUMAN_SESSION=<kind>:<profile>:<id>`.
 //!

@@ -1,12 +1,13 @@
 use std::process::ExitCode;
 
+use clap::Parser;
 use sruman::{
     cli::Cli,
     settings::{Environment, Settings},
 };
 
 fn main() -> ExitCode {
-    let cli = Cli::try_parse_args(std::env::args_os()).unwrap_or_else(|err| err.exit());
+    let cli = Cli::parse();
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(err) => {
@@ -28,6 +29,6 @@ fn main() -> ExitCode {
     };
 
     // Logging (4.2) and the commands (4.4) come next.
-    eprintln!("{} not implemented yet", settings.operation.name());
+    eprintln!("{} is not implemented yet", settings.command.name());
     ExitCode::from(1)
 }

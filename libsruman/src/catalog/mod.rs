@@ -376,7 +376,7 @@ impl Catalog {
         Ok(())
     }
 
-    /// Runtimes that depend on `name` directly (`-R` refuses to remove a
+    /// Runtimes that depend on `name` directly (`remove` refuses to remove a
     /// dependency that's still needed).
     pub fn dependents(&self, name: &str) -> Vec<&RuntimeDef> {
         self.iter()

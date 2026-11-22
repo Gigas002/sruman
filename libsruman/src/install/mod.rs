@@ -1,4 +1,4 @@
-//! Install transactions (pacman's `-S`): resolve targets and dependencies
+//! Install transactions (`install`): resolve targets and dependencies
 //! against the sync index and the store, show a summary, then for each item
 //! download into the package cache, verify against `SHA256SUMS`, extract
 //! into staging, and commit into the store.
@@ -35,7 +35,7 @@ mod tests;
 pub enum InstallError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
-    #[error("`{0}` isn't in the sync index; run `sruman -Sy` first")]
+    #[error("`{0}` isn't in the sync index; run `sruman sync` first")]
     NotSynced(String),
     #[error("`{name}` has no {channel} build on the server")]
     NoChannelBuild { name: String, channel: Channel },
@@ -95,7 +95,7 @@ pub struct TxItem {
     pub url: String,
     /// The runtime's `current` build before the transaction.
     pub current: Option<BuildId>,
-    /// `Always` for a `-Suu` downgrade; `IfNewer` otherwise.
+    /// `Always` for an `upgrade --allow-downgrade` downgrade; `IfNewer` otherwise.
     pub make_current: MakeCurrent,
 }
 
@@ -117,13 +117,13 @@ impl TxItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
     /// That exact build is installed. (Builds never change, so there is
-    /// nothing to reinstall; `-Qkk` checks an installed build's files.)
+    /// nothing to reinstall; `verify --full` checks an installed build's files.)
     Installed,
     /// A dependency with some build installed already.
     DependencySatisfied,
-    /// `-Su`: `current` is the channel's build (or newer, without `-uu`).
+    /// `upgrade`: `current` is the channel's build (or newer, without `--allow-downgrade`).
     UpToDate,
-    /// `-Su`: the runtime isn't in the sync index (or the catalog).
+    /// `upgrade`: the runtime isn't in the sync index (or the catalog).
     NotSynced,
 }
 
@@ -159,7 +159,7 @@ impl TxOptions {
 pub struct Transaction {
     /// In install order (dependencies first).
     pub items: Vec<TxItem>,
-    /// `-Su` where the channel's build is installed already: only
+    /// `upgrade` where the channel's build is installed already: only
     /// `current` moves. Applied before `items`.
     pub switches: Vec<Switch>,
     pub skipped: Vec<Skipped>,
@@ -174,7 +174,7 @@ pub struct Switch {
     pub to: BuildId,
 }
 
-/// Which runtimes `-Su` looks at.
+/// Which runtimes `upgrade` looks at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Upgrade {
     /// Every installed runtime.
@@ -236,7 +236,7 @@ fn channel_build(
 }
 
 impl Transaction {
-    /// Resolves `targets` (pacman's `-S`): each runtime at its pinned build
+    /// Resolves `targets` (`install`): each runtime at its pinned build
     /// or the channel's, after any missing dependency. A pinned build the
     /// index doesn't know is looked up on the server.
     pub fn install(
@@ -367,7 +367,7 @@ impl Transaction {
         self.items.is_empty() && self.switches.is_empty()
     }
 
-    /// Resolves pacman's `-Su`: for each runtime, the channel's build when
+    /// Resolves `upgrade`: for each runtime, the channel's build when
     /// it's newer than `current` (or older, with `allow_downgrade`).
     /// Builds that are installed already only move `current`.
     pub fn upgrade(

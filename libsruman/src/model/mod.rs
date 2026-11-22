@@ -5,7 +5,7 @@
 //! sruman profile is a `native` profile with an `[slr]` section
 //! ([`SlrSection`]). Games follow lootrs' `games.toml`.
 //! Validation never fails fast: it returns every [`Issue`] it finds, so
-//! `-Pk`/`-Gk` show them all at once.
+//! `check` shows them all at once.
 
 use std::path::Path;
 

@@ -73,7 +73,7 @@ pub struct AppDirs {
     pub runtimes: PathBuf,
     /// Suggested root for new prefixes; a prefix may live anywhere.
     pub prefixes: PathBuf,
-    /// The `-Sy` sync index.
+    /// The sync index (`sync`).
     pub sync_cache: PathBuf,
     /// Downloaded archives.
     pub pkg_cache: PathBuf,
