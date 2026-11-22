@@ -30,7 +30,7 @@ fn platform_dir_suffix_is_the_fallback_build() {
 }
 
 #[test]
-fn detects_scout_and_scout_ldlp() {
+fn detects_scout_and_points_from_its_steam_runtime_to_it() {
     let tmp = tempfile::tempdir().unwrap();
     let scout = tmp.path().join("SteamLinuxRuntime");
     fs::create_dir_all(scout.join("steam-runtime")).unwrap();
@@ -53,17 +53,12 @@ fn detects_scout_and_scout_ldlp() {
         "steam-runtime_1.0.20261021.266054\n",
     )
     .unwrap();
-    let found = detect(&ldlp, &catalog()).unwrap();
-    assert_eq!(
-        (found.name.as_str(), found.build.as_str()),
-        ("scout-ldlp", "1.0.20261021.266054")
+    let err = detect(&ldlp, &catalog()).unwrap_err();
+    assert!(
+        matches!(&err, ImportError::ScoutLdlp(dir) if *dir == ldlp),
+        "{err}"
     );
-
-    fs::write(ldlp.join("version.txt"), "something else\n").unwrap();
-    assert!(matches!(
-        detect(&ldlp, &catalog()),
-        Err(ImportError::NoBuildId { .. })
-    ));
+    assert!(err.to_string().contains("`mode = \"overlay\"`"), "{err}");
 }
 
 #[test]
@@ -182,7 +177,8 @@ fn detects_real_steam_installs() {
     assert_eq!(soldier.name, "soldier");
     let scout = detect(&common.join("SteamLinuxRuntime"), &catalog()).unwrap();
     assert_eq!(scout.name, "scout");
-    let ldlp = detect(&common.join("SteamLinuxRuntime/steam-runtime"), &catalog()).unwrap();
-    assert_eq!(ldlp.name, "scout-ldlp");
-    assert_eq!(ldlp.build, scout.build);
+    assert!(matches!(
+        detect(&common.join("SteamLinuxRuntime/steam-runtime"), &catalog()),
+        Err(ImportError::ScoutLdlp(_))
+    ));
 }

@@ -72,8 +72,6 @@ pub enum Entry {
     /// scout's libraries inside a soldier container:
     /// `<soldier>/run -- <build>/scout-on-soldier-entry-point-v2 -- <cmd>`.
     ScoutOnSoldier,
-    /// No container, the LD_LIBRARY_PATH runtime: `<build>/run.sh <cmd>`.
-    Ldlp,
 }
 
 impl Entry {
@@ -82,7 +80,6 @@ impl Entry {
         match self {
             Self::Container => "run",
             Self::ScoutOnSoldier => "scout-on-soldier-entry-point-v2",
-            Self::Ldlp => "run.sh",
         }
     }
 }
@@ -189,16 +186,9 @@ impl Catalog {
                 "Steam Linux Runtime 1.0 (scout), inside a soldier container",
                 "steamrt1",
                 &[(X86_64, "SteamLinuxRuntime.tar.xz")],
+                // The container scout runs in; overlay mode doesn't need it.
                 Entry::ScoutOnSoldier,
                 &["soldier"],
-            ),
-            RuntimeDef::builtin(
-                "scout-ldlp",
-                "Steam Linux Runtime 1.0 (scout), LD_LIBRARY_PATH only: no container",
-                "steamrt1",
-                &[(X86_64, "steam-runtime.tar.xz")],
-                Entry::Ldlp,
-                &[],
             ),
             RuntimeDef::builtin(
                 "soldier",

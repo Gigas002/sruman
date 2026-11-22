@@ -44,7 +44,7 @@ pub enum HomeMode {
     /// pressure-vessel's private home (`PRESSURE_VESSEL_HOME`): `$HOME` and
     /// the passwd entry both point at it.
     Container,
-    /// No container (`scout-ldlp`): only `HOME` and `XDG_*` are redirected.
+    /// No container (overlay mode): only `HOME` and `XDG_*` are redirected.
     Env,
 }
 

@@ -480,6 +480,15 @@ impl Store {
         crate::manifest::Manifest::parse(&fs::read_to_string(path).ok()?).ok()
     }
 
+    /// Where overlay-mode library folders of `build` go
+    /// (`<root>/.overlays/<name>/<build_id>/`); removed with the build.
+    pub fn overlay_dir(&self, build: &Installed) -> PathBuf {
+        self.root
+            .join(".overlays")
+            .join(&build.name)
+            .join(build.build.to_string())
+    }
+
     /// Takes a shared hold on `build` for a game launch.
     pub fn hold(&self, build: &Installed) -> Result<BuildHold, StoreError> {
         let path = self.hold_path(&build.name, &build.build);
@@ -518,6 +527,11 @@ impl Store {
             let moved = trash.join("build");
             fs::rename(&build.dir, &moved).map_err(io_err(&build.dir))?;
             remove_tree(&trash)?;
+        }
+        let overlays = self.overlay_dir(build);
+        if overlays.exists() {
+            remove_tree(&overlays)?;
+            let _ = fs::remove_dir(overlays.parent().unwrap_or(&overlays));
         }
         for path in [self.meta_path(&build.name, &build.build), hold_path] {
             match fs::remove_file(&path) {

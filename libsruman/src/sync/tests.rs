@@ -263,17 +263,24 @@ fn failures_are_per_runtime_and_keep_the_old_index() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = SyncDir::new(tmp.path());
     let all = RefreshOptions::default();
-    let results = refresh(&*server, &catalog(), &dir, &all);
+    // A second runtime on scout's server directory.
+    let twin: RuntimeOverride = toml::from_str(&format!(
+        "name = 'scout-twin'\nbase_url = '{BASE}/'\nserver_dir = 'steamrt1'\n\
+         archives = {{ x86_64 = 'SteamLinuxRuntime.tar.xz' }}\nentry = 'scout-on-soldier'"
+    ))
+    .unwrap();
+    let with_twin = catalog().with_overrides(&[twin]).unwrap();
+    let results = refresh(&*server, &with_twin, &dir, &all);
     let names: Vec<&str> = results.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(
         names,
-        ["scout", "scout-ldlp", "sniper", "soldier", "steamrt4"]
+        ["scout", "scout-twin", "sniper", "soldier", "steamrt4"]
     );
     for (name, outcome) in &results {
         let ok = matches!(outcome, RefreshOutcome::Updated { .. });
         assert_eq!(ok, name == "sniper", "{name}: {outcome:?}");
     }
-    // scout and scout-ldlp share steamrt1: one timestamp request.
+    // scout and scout-twin share steamrt1: one timestamp request.
     let log = server.take_log();
     let stamps = log
         .iter()

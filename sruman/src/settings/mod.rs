@@ -63,7 +63,7 @@ pub struct Settings {
     pub logging: Logging,
     /// Absolute directories from `PATH`, for wrappers.
     pub search_path: Vec<PathBuf>,
-    /// `$SHELL`, for shells in scout-ldlp.
+    /// `$SHELL`, for shells in overlay mode.
     pub shell: Option<PathBuf>,
     /// `$VISUAL` or `$EDITOR` (may include arguments), for `-Ge`/`-Pe`.
     pub editor: Option<String>,

@@ -58,7 +58,7 @@ sruman -D                            # check the system (user namespaces, runtim
 - Linux, x86_64 (arm64 later for `steamrt4`).
 - Unprivileged user namespaces, which most distributions enable. The container
   runtimes use pressure-vessel, which Valve ships inside each runtime.
-  `scout-ldlp` runs without a container.
+  Overlay mode (`mode = "overlay"`) runs games without a container.
 - Steam is **not** required. Games that insist on a running Steam client still
   need Steam (or gaki).
 

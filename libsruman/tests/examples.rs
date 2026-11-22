@@ -22,7 +22,13 @@ fn example_profiles_load_and_validate_without_errors() {
     assert!(loaded.issues.is_empty(), "{:#?}", loaded.issues);
     assert_eq!(
         loaded.profiles.keys().collect::<Vec<_>>(),
-        ["scout", "shared-prefix-a", "shared-prefix-b", "sniper"]
+        [
+            "overlay",
+            "scout",
+            "shared-prefix-a",
+            "shared-prefix-b",
+            "sniper"
+        ]
     );
     for profile in loaded.profiles.values() {
         let issues = model::validate_profile(profile, &ctx);

@@ -15,6 +15,10 @@
 //!
 //! [`wrap`] is the part lootrs and gaki use: a finished native command in,
 //! the same command inside a runtime out.
+//!
+//! `[slr] mode` picks how (D13): `container` runs the command in
+//! pressure-vessel, `overlay` runs it on the host with the runtime's
+//! libraries first on `LD_LIBRARY_PATH` (see [`crate::overlay`]).
 
 use std::{
     collections::BTreeMap,
@@ -28,11 +32,12 @@ use std::{
 };
 
 use crate::{
-    catalog::{Catalog, Entry},
+    catalog::{Arch, Catalog, Entry},
     model::{
-        self, Game, Issue, Issues, Profile, Runner, ShaderCache, SlrSection, Subject,
-        ValidationContext,
+        self, Game, Issue, Issues, LibOverride, Profile, Runner, ShaderCache, SlrMode, SlrSection,
+        Subject, ValidationContext,
     },
+    overlay::{self, Abi, HostLibs, OverlayPlan, Resolved},
     paths,
     prefix::{self, HomeMode, PrefixContext, PrefixUse},
     store::{Installed, Store},
@@ -89,9 +94,12 @@ pub struct LaunchContext<'a> {
     pub extra_args: &'a [String],
     pub store: &'a Store,
     pub catalog: &'a Catalog,
-    /// The user's `$SHELL`, for [`Target::Shell`] without a container
-    /// (scout-ldlp); containers use pressure-vessel's own shell.
+    /// The user's `$SHELL`, for [`Target::Shell`] in overlay mode;
+    /// containers use pressure-vessel's own shell.
     pub shell: Option<&'a Path>,
+    /// The host's libraries for overlay mode; `None` runs `ldconfig -p`
+    /// when an overlay profile needs them.
+    pub host_libs: Option<&'a HostLibs>,
 }
 
 /// A resolved command, ready to spawn.
@@ -144,9 +152,11 @@ pub struct NativeCommand {
 pub struct Runtimes {
     /// The profile's runtime.
     pub runtime: Installed,
-    /// The container it runs in, for scout: soldier's current build.
+    /// The container it runs in, for scout in container mode: soldier's
+    /// current build.
     pub host: Option<Installed>,
     pub entry: Entry,
+    pub mode: SlrMode,
 }
 
 /// The result of [`prepare`]: everything decided, nothing locked yet.
@@ -168,6 +178,8 @@ pub struct LaunchPlan {
     pub builds: Vec<Installed>,
     /// The prefix to set up, and how.
     pub prefix: Option<PrefixPlan>,
+    /// Overlay mode: the library folder [`LaunchPlan::acquire`] creates.
+    pub overlay: Option<OverlayPlan>,
 }
 
 /// What [`LaunchPlan::acquire`] does to the prefix.
@@ -215,7 +227,7 @@ impl LaunchPlan {
         }
         argv.extend(self.command.iter().cloned());
         let mut argv = argv.into_iter();
-        let program = PathBuf::from(argv.next().expect("an entry point"));
+        let program = PathBuf::from(argv.next().expect("an entry point or a command"));
         LaunchSpec {
             program,
             args: argv.collect(),
@@ -225,8 +237,8 @@ impl LaunchPlan {
         }
     }
 
-    /// Holds every build, sets up the prefix, creates the shader cache
-    /// directory, and returns the spec to spawn. Fails with the problems
+    /// Holds every build, creates the overlay folder, sets up the prefix,
+    /// creates the shader cache directory, and returns the spec to spawn. Fails with the problems
     /// (a busy prefix, a build being removed) without leaving anything
     /// locked.
     pub fn acquire(
@@ -243,6 +255,9 @@ impl LaunchPlan {
                 .hold(build)
                 .map_err(|e| fail(format!("{} {}: {e}", build.name, build.build)))?;
             fds.push(hold.into_fd());
+        }
+        if let Some(overlay) = &self.overlay {
+            overlay.build().map_err(|e| fail(e.to_string()))?;
         }
         if let Some(plan) = &self.prefix {
             let prepared = prefix::ensure(
@@ -354,8 +369,10 @@ pub fn resolve_runtimes(
         ));
         return None;
     }
-    let host = match def.entry {
-        Entry::ScoutOnSoldier => {
+    let host = match (def.entry, slr.mode) {
+        // Overlay mode uses scout's own libraries, no container.
+        (Entry::ScoutOnSoldier, SlrMode::Overlay) | (Entry::Container, _) => None,
+        (Entry::ScoutOnSoldier, SlrMode::Container) => {
             // `depends` names the container scout runs in (soldier).
             let Some(host_name) = def.depends.first() else {
                 problems.push(format!(
@@ -382,13 +399,65 @@ pub fn resolve_runtimes(
             }
             Some(host)
         }
-        Entry::Container | Entry::Ldlp => None,
     };
     Some(Runtimes {
         runtime,
         host,
         entry: def.entry,
+        mode: slr.mode,
     })
+}
+
+/// The overlay folder for `runtimes` (overlay mode), or the problems: no
+/// libraries to read, no host library list, a host glibc older than the
+/// runtime's.
+pub fn overlay_plan(
+    runtimes: &Runtimes,
+    slr: &SlrSection,
+    ctx: &LaunchContext,
+    problems: &mut Vec<String>,
+) -> Option<OverlayPlan> {
+    let build = &runtimes.runtime;
+    let Some(arch) = Arch::current() else {
+        problems.push("overlay mode needs an x86_64 or arm64 host".to_owned());
+        return None;
+    };
+    let abis = Abi::for_arch(arch);
+    let libs = match overlay::runtime_libs(&build.dir, runtimes.entry, abis) {
+        Ok(libs) => libs,
+        Err(e) => {
+            problems.push(format!(
+                "{} {}: can't list its libraries: {e}",
+                build.name, build.build
+            ));
+            return None;
+        }
+    };
+    let loaded;
+    let host = match ctx.host_libs {
+        Some(host) => host,
+        None => match HostLibs::system() {
+            Ok(host) => {
+                loaded = host;
+                &loaded
+            }
+            Err(e) => {
+                problems.push(e.to_string());
+                return None;
+            }
+        },
+    };
+    if let Some(problem) = overlay::glibc_problem(&libs, host, abis[0]) {
+        problems.push(problem);
+        return None;
+    }
+    Some(overlay::plan(
+        &libs,
+        host,
+        &slr.lib_overrides,
+        abis,
+        &ctx.store.overlay_dir(build),
+    ))
 }
 
 /// Like [`resolve_build`] for a dependency, naming who needs it.
@@ -408,6 +477,8 @@ fn store_resolve_for(
         }
     }
 }
+
+const LIBRARY_PATH: &str = "LD_LIBRARY_PATH";
 
 /// Joins paths for `PRESSURE_VESSEL_FILESYSTEMS_*`, which splits on `:`.
 fn join_paths(field: &str, list: &[PathBuf], problems: &mut Vec<String>) -> Option<OsString> {
@@ -438,8 +509,9 @@ fn push_unique(list: &mut Vec<PathBuf>, path: PathBuf) {
 }
 
 /// Wraps `native` in the runtime: the entry point, its env and shared
-/// paths. `prefix` (absolute) becomes the private home. Returns the plan
-/// without wrappers; [`prepare`] adds them.
+/// paths, or in overlay mode the library folder. `prefix` (absolute)
+/// becomes the private home. Returns the plan without wrappers; [`prepare`]
+/// adds them.
 pub fn wrap(
     native: NativeCommand,
     slr: &SlrSection,
@@ -465,7 +537,10 @@ pub fn wrap(
         })
     };
 
-    if runtimes.entry == Entry::Ldlp {
+    if runtimes.mode == SlrMode::Overlay {
+        let Some(overlay) = overlay_plan(&runtimes, slr, ctx, &mut problems) else {
+            return Err(LaunchError { problems });
+        };
         // No container: the host filesystem is all there, and the prefix
         // home can only be offered through the environment.
         let mut env = BTreeMap::new();
@@ -486,12 +561,19 @@ pub fn wrap(
                 env.insert(key.to_owned(), dir.into_os_string());
             }
         }
+        // The overlay first, then the profile's or game's own path.
+        let mut library_path = overlay.ld_library_path();
+        if let Some(own) = native.env.get(LIBRARY_PATH).filter(|v| !v.is_empty()) {
+            library_path.push(":");
+            library_path.push(own);
+        }
         env.extend(native.env);
+        env.insert(LIBRARY_PATH.to_owned(), library_path);
         let mut command = vec![native.program];
         command.extend(native.args);
         return Ok(LaunchPlan {
             wrappers: Vec::new(),
-            entry: vec![build.dir.join(Entry::Ldlp.marker()).into_os_string()],
+            entry: Vec::new(),
             command,
             // Nothing in between closes fds: the holds are inherited.
             pass_fds: false,
@@ -500,6 +582,7 @@ pub fn wrap(
             shader_cache: None,
             builds: vec![runtimes.runtime.clone()],
             prefix: prefix_plan(HomeMode::Env),
+            overlay: Some(overlay),
         });
     }
 
@@ -586,6 +669,7 @@ pub fn wrap(
         shader_cache: None,
         builds,
         prefix: prefix_plan(HomeMode::Container),
+        overlay: None,
     })
 }
 
@@ -740,10 +824,17 @@ pub fn preflight(profile: &Profile, ctx: &LaunchContext) -> Vec<Issue> {
     };
     let mut collect = Issues::new(Subject::Profile(profile.name.clone()));
     let mut problems = Vec::new();
-    resolve_runtimes(slr, ctx, &mut problems);
+    let runtimes = resolve_runtimes(slr, ctx, &mut problems);
+    let overlay = runtimes
+        .as_ref()
+        .filter(|r| r.mode == SlrMode::Overlay)
+        .and_then(|r| overlay_plan(r, slr, ctx, &mut problems));
     resolve_wrappers(&profile.wrappers, ctx.search_path, &mut problems);
     for problem in problems {
         collect.error(problem);
+    }
+    if let (Some(overlay), Some(runtimes)) = (&overlay, &runtimes) {
+        override_warnings(overlay, &runtimes.runtime, &mut collect);
     }
     for (field, paths) in [
         ("slr.filesystems_rw", &slr.filesystems_rw),
@@ -767,6 +858,33 @@ pub fn preflight(profile: &Profile, ctx: &LaunchContext) -> Vec<Issue> {
     }
     issues.extend(collect.finish());
     issues
+}
+
+/// `[slr.lib_overrides]` entries that can't do what they say, for the main
+/// ABI (a missing 32-bit copy is normal on 64-bit-only hosts).
+fn override_warnings(overlay: &OverlayPlan, build: &Installed, issues: &mut Issues) {
+    let Some(&main) = overlay.abis.first() else {
+        return;
+    };
+    for report in overlay.overrides.iter().filter(|r| r.abi == main) {
+        let name = &report.name;
+        match (report.setting, &report.resolved) {
+            (LibOverride::Runtime, Resolved::Runtime(_))
+            | (LibOverride::Host, Resolved::Host(_))
+            | (LibOverride::Newest, Resolved::Runtime(_) | Resolved::Host(_)) => {}
+            (LibOverride::Runtime, _) => issues.warn(format!(
+                "`slr.lib_overrides.\"{name}\"` = \"runtime\", but {} {} has no {main} copy",
+                build.name, build.build
+            )),
+            (LibOverride::Host, _) => issues.warn(format!(
+                "`slr.lib_overrides.\"{name}\"` = \"host\", but the host has no {main} copy"
+            )),
+            (LibOverride::Newest, _) => issues.warn(format!(
+                "`slr.lib_overrides.\"{name}\"`: neither {} {} nor the host has a {main} copy",
+                build.name, build.build
+            )),
+        }
+    }
 }
 
 fn check_exe(exe: &Path, problems: &mut Vec<String>) {

@@ -9,7 +9,7 @@ fn builtin_matches_valves_server() {
     let catalog = Catalog::builtin();
     assert_eq!(
         catalog.names().collect::<Vec<_>>(),
-        ["scout", "scout-ldlp", "sniper", "soldier", "steamrt4"]
+        ["scout", "sniper", "soldier", "steamrt4"]
     );
     let sniper = catalog.get("sniper").unwrap();
     assert_eq!(
@@ -26,7 +26,11 @@ fn builtin_matches_valves_server() {
     let scout = catalog.get("scout").unwrap();
     assert_eq!(scout.entry, Entry::ScoutOnSoldier);
     assert_eq!(scout.depends, ["soldier"]);
-    assert_eq!(catalog.get("scout-ldlp").unwrap().entry, Entry::Ldlp);
+    assert_eq!(
+        catalog.get("scout-ldlp"),
+        None,
+        "scout in overlay mode replaces it"
+    );
     assert_eq!(
         catalog.get("steamrt4").unwrap().archive(Arch::Arm64),
         Some("SteamLinuxRuntime_4-arm64.tar.xz")
@@ -40,7 +44,6 @@ fn entry_markers() {
         Entry::ScoutOnSoldier.marker(),
         "scout-on-soldier-entry-point-v2"
     );
-    assert_eq!(Entry::Ldlp.marker(), "run.sh");
 }
 
 #[test]

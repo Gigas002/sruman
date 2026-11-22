@@ -370,7 +370,8 @@ pub fn refresh(
             continue;
         }
         let images = images_url(def);
-        // Runtimes on the same server directory (scout, scout-ldlp) share it.
+        // Runtimes on the same server directory (a `[[runtime]]` copy of a
+        // built-in one) share it.
         let stamp = timestamps
             .entry(images.clone())
             .or_insert_with(|| {

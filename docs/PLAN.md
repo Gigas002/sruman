@@ -63,9 +63,11 @@ the command style (D9); pacman for the transaction output.
 
 - TUI or GUI. lootrs is the place for a games UI once it integrates `libsruman`.
 - Running Windows games: that's wine, Proton and umu (lootrs covers them).
+  sruman only provides the Steam Linux Runtimes umu runs Proton in (D15).
 - Replacing Steam: no login, no Steamworks bridge. Games that need a running
   Steam client still go through Steam or gaki.
-- Building runtimes from Debian packages (see D5).
+- Building runtimes from scratch out of Debian packages (see D5). Custom
+  runtimes (Phase 6) only change packages in one of Valve's builds (D16).
 
 ---
 
@@ -208,8 +210,10 @@ verified the ones that depended on runtime behavior.
 | D10 | **Games list?** | **Settled: yes, lootrs' `games.toml`.** `[[game]]` entries with lootrs' fields (`name`, `exe`, `profile`, `args`, `cwd`, `env`; no `game_id`, which is umu-only). A run target is resolved by a shell-like rule: if it contains `/` or starts with `~`, it's a **path**; otherwise it's a **game name** from `games.toml`. An unknown name that matches a file in the current directory fails with `error: no game 'foo' (did you mean ./foo?)`, so a name never silently runs a file. `-p` on a game overrides its profile for that run. **Revised 2026-11-22:** with D9's subcommands the ambiguity is gone: `run <game>` takes only game names and `execute <path|program>` only executables, as in lootrs. The "did you mean ./foo" rule is dropped. |
 | D11 | **Prefix home mechanism.** | **Settled (verified in the spike): pressure-vessel's private home.** A profile with a `prefix` runs with `PRESSURE_VESSEL_HOME=<prefix>/home`, so `$HOME` and `getpwent` both resolve to it, and the real home is hidden except the cwd and shared paths. sruman adds the exe's directory, `cwd`, the prefix, and (for scout) the scout build dir (RW, for its `var/`) to `PRESSURE_VESSEL_FILESYSTEMS_*`, plus the profile's `filesystems_rw/ro`. `scout-ldlp` has no container, so it falls back to env redirection (`HOME`, `XDG_*_HOME`), and `-Pk` warns that this is weaker there. **Revised 2026-11-22:** "no container" now means `mode = "overlay"` (D13) on any runtime, not only `scout-ldlp`; the env-redirection fallback and its warning apply to every overlay profile with a `prefix`. |
 | D12 | **Missing runtime at launch.** | **Settled: prompt.** On a TTY: `:: Runtime sniper is not installed. Install it now? [Y/n]`, then the normal `-S` transaction, then the launch. With `--noconfirm` or no TTY: exit 2 naming `sruman -S sniper`. `auto_install = true` installs without asking. |
-| D13 | **Runner and modes.** You want two ways to run a game: a fake home that keeps the game in its prefix (like Wine), and the real home and system with only the runtime's libraries on top. | **Settled 2026-11-22.** (1) `slr` is its own runner in libgameprofiles (`native`, `slr`, `wine`, `umu`, `proton`), not `native` + `[slr]`. (2) Two independent choices: the **home** is private when `prefix` is set (D11) and real otherwise; the **libraries** come from `[slr] mode`: `container` (default; today's pressure-vessel launch, the runtime's `/usr` replaces the system's) or `overlay` (no container: the host root and home, with the runtime's libraries first on `LD_LIBRARY_PATH`, the way `scout-ldlp` works today). Container + prefix is the fake home; overlay without prefix is the second use case. (3) In overlay mode, glibc (`libc.so.6`, `ld-linux*`, `libm`, `libpthread`, `libdl`, `librt`) and the GPU stack (Vulkan/GL loaders and drivers, `libdrm`, `libgbm`) always come from the host: the host's dynamic loader can't load an older glibc, and the drivers need the host's own libraries. `libstdc++.so.6` and `libgcc_s.so.1` come from whichever copy is newer, as Steam's scout runtime "pins" them; host Mesa needs the newer `libstdc++`. (4) Neither mode is a security sandbox: a container still sees the GPU, D-Bus, the Wayland/X11 sockets and shared paths. Real isolation (bubblewrap/landlock rules) would be a separate, later feature. (5) The libgameprofiles side (keys, file checks, warnings for settings a mode ignores) lands there first; sruman then implements overlay launching (Phase 3b). |
-| D14 | **Library overrides.** Like Wine's `dll_overrides`, a way to choose per library. | **Settled 2026-11-22.** `[slr.lib_overrides]`, overlay mode only (a warning in container mode: importing one host library into pressure-vessel isn't supported cleanly). Keys are sonames (`libSDL2-2.0.so.0`), values `runtime`, `host` or `newest`. The defaults are D13's: glibc and GPU drivers `host`, `libstdc++`/`libgcc_s` `newest`, everything else `runtime`. Overriding a glibc or driver library to `runtime` is a sruman error (it can't work), not a format error. The usual real use is `host` for a newer SDL (Wayland). |
+| D13 | **Runner and modes.** You want two ways to run a game: a fake home that keeps the game in its prefix (like Wine), and the real home and system with only the runtime's libraries on top. | **Settled 2026-11-22.** (1) `slr` is its own runner in libgameprofiles (`native`, `slr`, `wine`, `umu`, `proton`), not `native` + `[slr]`. (2) Two independent choices: the **home** is private when `prefix` is set (D11) and real otherwise; the **libraries** come from `[slr] mode`: `container` (default; today's pressure-vessel launch, the runtime's `/usr` replaces the system's) or `overlay` (no container: the host root and home, with the runtime's libraries first on `LD_LIBRARY_PATH`, the way `scout-ldlp` works today). Container + prefix is the fake home; overlay without prefix is the second use case. (3) In overlay mode, glibc (`libc.so.6`, `ld-linux*`, `libm`, `libpthread`, `libdl`, `librt`) and the GPU stack (Vulkan/GL loaders and drivers, `libdrm`, `libgbm`) always come from the host: the host's dynamic loader can't load an older glibc, and the drivers need the host's own libraries. **Revised 2026-11-22 (3b.2):** every other library is `newest` by default, not "runtime first": the runtime's copy goes on `LD_LIBRARY_PATH` only when the host has none or an older one. Checked on this host with steamrt4: with the runtime's libraries first, RADV fails to load (`undefined symbol: wl_display_dispatch_queue_timeout`: the runtime's older `libwayland-client` shadows Arch's) and EGL silently falls back from the AMD GPU to NVIDIA; with `newest`, `vulkaninfo`, `eglinfo` and `glxinfo` report exactly what they do without an overlay. The host's drivers load into the game, so anything they link must be at least the host's version. Steam's own LD_LIBRARY_PATH runtime does the same (scout's `run.sh`: host libraries first, runtime libraries "pinned" only where newer). (4) Neither mode is a security sandbox: a container still sees the GPU, D-Bus, the Wayland/X11 sockets and shared paths. Real isolation (bubblewrap/landlock rules) would be a separate, later feature. (5) The libgameprofiles side (keys, file checks, warnings for settings a mode ignores) lands there first; sruman then implements overlay launching (Phase 3b). |
+| D14 | **Library overrides.** Like Wine's `dll_overrides`, a way to choose per library. | **Settled 2026-11-22.** `[slr.lib_overrides]`, overlay mode only (a warning in container mode: importing one host library into pressure-vessel isn't supported cleanly). Keys are sonames (`libSDL2-2.0.so.0`), values `runtime`, `host` or `newest`. The defaults are D13's: glibc and GPU drivers `host`, everything else `newest` (revised 2026-11-22, see D13; `runtime` stays available per library, for a game that needs exactly the runtime's copy). Overriding a glibc or driver library to `runtime` is a sruman error (it can't work), not a format error. The usual real use is `host` for a newer SDL (Wayland). |
+| D15 | **Runtimes for umu.** lootrs runs Proton through umu, and umu downloads and updates a Steam Linux Runtime by itself. You want every runtime handled by sruman only, and umu never to download one, not even the first time. | **Settled 2026-11-22.** umu stays lootrs' Proton launcher; sruman provides its runtimes, and becomes a hard dependency of lootrs' `umu` runner for every Proton that needs one. Checked against umu-launcher 1.4.4: (1) umu picks the runtime from the Proton's `toolmanifest.vdf`: `require_tool_appid` 1391110 is `steamrt2` (soldier), 1628350 `steamrt3` (sniper), 4183110 `steamrt4`; no `require_tool_appid` means umu's `host` mode, with no runtime at all (`proton-cachyos-native`). (2) It looks in `$UMU_FOLDERS_PATH/umu/<variant>` (default `$XDG_DATA_HOME/umu/<variant>`), and a folder counts as installed when it has `.installed.ok`; besides that marker, the folder is Valve's runtime unchanged plus a `umu -> _v2-entry-point` symlink. umu writes `umu.lock` and `umu-shim` next to it itself. (3) With `UMU_RUNTIME_UPDATE=0`, an installed runtime is never updated. (4) umu has no switch that stops it downloading a missing runtime, so the guarantee comes from lootrs never starting umu without one. **Design:** `sruman provide-umu <rt>` makes `$XDG_DATA_HOME/sruman/umu/<variant>/` a view of the build: symlinks to its top-level entries, plus the `umu` link and the marker, so the build itself stays unmodified (`_v2-entry-point` resolves itself with `readlink -f`, so it runs from the real build). lootrs, before every umu launch or `init`: reads `require_tool_appid` (none: host mode, sruman not involved), runs `sruman provide-umu --appid <id> --json`, sets `UMU_FOLDERS_PATH=$XDG_DATA_HOME/sruman` and `UMU_RUNTIME_UPDATE=0`, and holds the build's shared hold (`<build_id>.lock`, from the JSON) for the run, so `remove`, `clean` and upgrades never pull a build from under a umu game. If sruman can't provide the runtime, lootrs refuses the launch. A missing runtime follows D12 (prompt on a TTY, else exit 2 naming `sruman install`). Updates are sruman's `upgrade`; the next `provide-umu` repoints the view atomically unless that build is in use. What remains: umu still fetches the version file `latest-public-beta.txt` from repo.steampowered.com on each launch; nothing is downloaded into the runtime or written. A runtime umu already downloaded is taken over with `sruman import` (then delete umu's copy). |
+| D16 | **Custom runtimes.** Your sketch: `build create my-sniper --base sniper`, `build override … sdl2 --version 2.32.8`, `build add … mangohud`, `build inspect`, `build commit`, `run my-sniper ./game`, `export`/`import` to reproduce it elsewhere. | **Settled 2026-11-22: doable, after 0.1.0 (Phase 6), in two levels.** What a runtime is, checked on steamrt4 4.0.20261021.265997: a Flatpak-style platform image that Valve builds with flatdeb from Debian packages (steamrt4 is Debian 13 plus Valve's patches, sniper Debian 11). `files/` is its `/usr`; `files/manifest.dpkg` lists every package (527) with its exact version; there is **no dpkg database**, so no per-package file lists and no maintainer scripts; `metadata` names the matching SDK image, which Valve publishes in the same `images/` folder. (1) **A custom runtime is a base build plus a recipe**: an `SLRBUILD` file (TOML) naming the base (`sniper=<build>`) and the packages to override, add or leave out, each with exact version and sha256, from Valve's steamrt apt repo (same ABI and patches) or the base's Debian release. `build commit` turns it into a new immutable build `my-sniper=<n>` in the store with its own `manifest.dpkg` and mtree, registered as a local catalog entry (D8), so profiles, `run`, `verify`, holds and `provide-umu` (D15) treat it like any runtime. (2) **Level 1, no apt:** copy the base (reflink, else hardlinks); for an overridden package, remove the files of the old version, listed by the old version's `.deb` fetched from Valve's repo (the exact version is in the manifest), then unpack the new `.deb`. Only packages whose maintainer scripts do nothing beyond `ldconfig` and triggers (libraries, data: the real use cases) are accepted; others are refused with the reason. Dependencies are checked against the resulting manifest, and unmet ones are listed for you to add: no resolver. (3) **Level 2, later:** packages with scripts and automatic dependency resolution, by running Debian's own apt and dpkg in the SDK image inside an unprivileged container (bubblewrap and a user namespace, nothing touches the host), then deriving the platform tree as flatdeb does. That is the "chroot-like" `SLRBUILD` build. (4) **Export:** the recipe is the reproducible form (a few KB, rebuilt anywhere from the same base and pinned packages); `export --full` also writes the whole build as `.tar.zst` for offline machines; `import` takes either. (5) **Rebase:** `build rebase` re-applies a recipe on a newer base build and reports overrides the base has caught up with. (6) **Not this:** a runtime built from Arch packages (`slr-arch`) has a different glibc and ABI floor, so it is no longer the runtime games are tested against; it stays a separate experiment. MangoHud needs no package: pressure-vessel imports the host's Vulkan layers, and wrappers run outside the container. A newer SDL for one game is also D14's `host` override in overlay mode, with no custom runtime. |
 
 ---
 
@@ -243,6 +247,7 @@ Bare `sruman` prints the help.
 | `verify <rt> [--full]`                    | Check an installed build: files present / content hashes (`mtree.txt.gz`)                                                             |
 | `clean [--all]`                           | Download cache of uninstalled builds / all archives; builds beyond `keep_versions` that aren't pinned or in use                      |
 | `import <archive\|dir> [--link]`          | Install from a local archive or directory (Steam's `SteamLinuxRuntime_sniper`, umu's `steamrt3`); `--link` registers it in place     |
+| `provide-umu <rt>[=build] \| --appid <id> [--json]` | Make the runtime umu's `<variant>` folder under `$XDG_DATA_HOME/sruman/umu/` (D15); prints the folders path and the build's hold lock |
 
 ### Games, profiles, running
 
@@ -283,6 +288,19 @@ don't belong, and `settings/` only merges flags, `config.toml` and defaults
 into `Settings { command: Command, … }`. Arguments after `--` (or after the
 target of `run`/`execute`) pass through untouched. Nothing below `settings/`
 sees clap types.
+
+### Custom runtimes (Phase 6, after 0.1.0; D16)
+
+| Command                                   | Does                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `build create <name> --base <rt>[=build]` | Start a recipe (`SLRBUILD`) on a base build                                                |
+| `build override <name> <pkg>[=version]`   | Use another version of a base package (Valve's repo first, then the base's Debian release) |
+| `build add <name> <pkg>[=version]`        | Add a package; unmet dependencies are listed                                               |
+| `build remove <name> <pkg>`               | Leave a base package out; refused while another package depends on it                      |
+| `build inspect <name>`                    | Packages against the base: overridden, added, left out, with versions and sources          |
+| `build commit <name>`                     | Build the recipe into a new immutable build `<name>=<n>`                                   |
+| `build rebase <name> [--base <rt>=build]` | Re-apply the recipe on a newer base build                                                  |
+| `export <rt>[=build] <file> [--full]`     | Write the recipe, or with `--full` the whole build as `.tar.zst`; `import` takes either    |
 
 ### Old spelling → new
 
@@ -439,6 +457,8 @@ sruman/
 $XDG_CONFIG_HOME/sruman/config.toml, games.toml, profiles/<name>.toml
 $XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman changes the store (pacman's db.lck)
                                      /.staging/            # partial installs/removals, wiped under the lock
+                                     /.overlays/<name>/<build_id>/<hash>/<triplet>/   # overlay mode's library links
+                                                           # (D13); hash of the links, removed with the build
                                      /<name>/<build_id>/   # the build (a symlink when linked); never modified by sruman
                                                            # after install, but must stay user-writable (pressure-vessel
                                                            # opens files/.ref and writes var/: hardlinked copies, same fs)
@@ -446,6 +466,7 @@ $XDG_DATA_HOME/sruman/runtimes/.lock                  # exclusive while sruman c
                                      /<name>/<build_id>.lock   # sruman's shared hold while a game runs
                                      /<name>/current -> <build_id>
 $XDG_DATA_HOME/sruman/prefixes/<name>/               # default prefix_root (prefix paths may be anywhere)
+$XDG_DATA_HOME/sruman/umu/<variant>/                 # D15: umu's view of a build (symlinks, `umu` link, `.installed.ok`); UMU_FOLDERS_PATH=$XDG_DATA_HOME/sruman
 $XDG_CACHE_HOME/sruman/sync/<name>.toml              # -Sy index: timestamp, channel → build; per build: archives (sha256, size), os-release
 $XDG_CACHE_HOME/sruman/sync/manifests/<name>-<build>.manifest.dpkg   # package list of each indexed build
 $XDG_CACHE_HOME/sruman/pkg/<name>-<build>-<archive>  # download cache (pacman's /var/cache/pacman/pkg); <file>.part while downloading
@@ -920,7 +941,7 @@ before the binary, and Phase 4's commands get modes for free.
       yet", pointing at `scout-ldlp`) until 3b.3, and doesn't repeat
       libgameprofiles' error for a missing `[slr]`. `model` re-exports
       `SlrMode` and `LibOverride`.
-- [ ] **3b.2** Overlay library folders. `LD_LIBRARY_PATH` works per
+- [x] **3b.2** Overlay library folders. `LD_LIBRARY_PATH` works per
       directory, so sruman builds, per build and set of overrides, a folder
       of symlinks to the runtime's libraries (64- and 32-bit), leaving out
       glibc and the GPU stack and linking the newer of host and runtime for
@@ -928,23 +949,66 @@ before the binary, and Phase 4's commands get modes for free.
       pinned libraries). Built atomically under the build's lock, cached by a
       hash of build + overrides, removed with the build. Tests on fake
       runtimes with fake host library dirs.
-- [ ] **3b.3** Overlay launch: `launch::wrap` for `mode = "overlay"` runs the
+      _Done 2026-11-22 (`libsruman::overlay`):_ Valve's archives contain no
+      symlinks, so the library names come from the runtime's mtree
+      (`<suite>_platform_*/usr-mtree.txt.gz` for container runtimes, the
+      build's `mtree.txt.gz` under `steam-runtime/{lib,usr/lib}/<triplet>`
+      for scout; the directories themselves when there's no mtree), links
+      followed, `contents=` objects honored; a real file behind a link is
+      offered under the link's name only. The host's libraries come from
+      `ldconfig -p`. Every library is `newest` by default (D13 revised):
+      versions from the real file names after the soname's stem
+      (`libSDL2-2.0.so.0.3200.74` → 0.3200.74, `libelf-0.192.so` → 0.192),
+      ties to the host, `libgcc_s.so.1` by its `GCC_` version nodes. The
+      folder is `.overlays/<name>/<build>/<hash>/<triplet>/`, named by a
+      hash of its links (so a host upgrade, a new build or other overrides
+      get their own), built next to its place and renamed; no lock needed,
+      a lost race reuses the winner's. Old hash folders stay until the build
+      is removed (a few KB each). On Steam's real steamrt4 and scout: 188 of
+      503 and 388 of 550 libraries linked, and the host's `vulkaninfo`,
+      `eglinfo` and `glxinfo` see the same GPUs and drivers as without an
+      overlay (ignored test `real_runtimes_keep_the_host_gpu_stack_working`).
+- [x] **3b.3** Overlay launch: `launch::wrap` for `mode = "overlay"` runs the
       game directly (no pressure-vessel) with the overlay folders first on
       `LD_LIBRARY_PATH` (before the profile's own), `HOME`/`XDG_*` redirected
       when there's a `prefix` (D11's fallback), wrappers, env layering, tags
       and prefix locks as in container mode. Preflight: the host's glibc must
       be at least the runtime's (else an error naming both versions).
-- [ ] **3b.4** Fold `scout-ldlp` into `scout` (D7): overlay on scout uses the
+      _Done 2026-11-22:_ `LaunchPlan::overlay` is built by `acquire` after
+      the build hold; `prepare` stays read-only. `LaunchContext::host_libs`
+      takes a host library list (`None` runs `ldconfig -p` when needed). The
+      glibc check compares the highest `GLIBC_` version node of both
+      `libc.so.6` files, in `wrap` and `preflight`. The inherited
+      `LD_LIBRARY_PATH` is replaced (the profile's or game's own is kept
+      after the overlay). `real_launch` now runs both modes on a real build:
+      checked on Steam's steamrt4 (prefix home, holds, folder built).
+- [x] **3b.4** Fold `scout-ldlp` into `scout` (D7): overlay on scout uses the
       LD_LIBRARY_PATH runtime the scout archive already bundles (its
       `run.sh`), so no second download. `scout-ldlp` stays a catalog alias
       for one release, with a deprecation warning. Decide whether `depends`
       (scout → soldier) applies only to container mode. The `ldlp` warnings
       in `validate_profile` go: libgameprofiles gives them for
       `mode = "overlay"`.
-- [ ] **3b.5** `[slr.lib_overrides]` (D14): per-soname `runtime`, `host` or
+      _Done 2026-11-22:_ no alias: sruman was never released, so
+      `scout-ldlp` and `Entry::Ldlp` are gone, and `runtime = "scout-ldlp"`
+      is an error pointing at `scout` + `mode = "overlay"`. Overlay on scout
+      links its bundled `steam-runtime/` libraries (sruman's own folder, not
+      `run.sh`, so overrides work the same everywhere). `depends` stays an
+      install dependency; an overlay launch doesn't need or hold soldier.
+      `import` of a bare `steam-runtime/` directory is refused with a hint
+      to import the `SteamLinuxRuntime` directory around it. `doctor`'s
+      tools for overlay scout are its `steam-runtime/amd64/usr/bin` ones,
+      through its `run.sh`.
+- [x] **3b.5** `[slr.lib_overrides]` (D14): per-soname `runtime`, `host` or
       `newest` over the defaults; `runtime` for a glibc or driver library is
       an error in `validate_profile`. `doctor` and `profiles show` print
       which copy each overridden library resolves to.
+      _Done 2026-11-22 (library side):_ `OverlayPlan::overrides` resolves
+      every entry per ABI (`Resolved::Runtime(path)`, `Host(path)` or
+      `Missing`), for `doctor` and `profiles show` to print once they exist
+      (4.4). `preflight` warns about entries that can't apply on the main
+      ABI (a `runtime` library the build lacks, a `host` one the host
+      lacks).
 
 ### Phase 4 — the `sruman` binary
 
@@ -1002,6 +1066,17 @@ before the binary, and Phase 4's commands get modes for free.
 - [ ] **4.6** `tests/cli.rs`: parse matrix, `check` on examples, and
       `sruman run <game>` / `sruman execute <path>` (both modes) against a fake runtime whose `run` is a script echoing argv/env, run
       against the fixture HTTP server from 2.6 for `install`/`upgrade --sync`.
+- [ ] **4.7** `provide-umu` (D15). Catalog entries get the Steam app id
+      of their runtime (soldier 1391110, sniper 1628350, steamrt4 4183110)
+      for `--appid`. The view is built under the store lock in `.staging`
+      and renamed into place; a view whose build is held is left alone.
+      `--json` prints `{ folders, variant, build, hold }`. Before building
+      it, check with a real Proton that needs sniper or steamrt4 that umu
+      1.4.4 runs from the symlink view with `UMU_FOLDERS_PATH` set: online
+      (it may fetch only the version file; no download, no update) and
+      offline. If pressure-vessel refuses the view,
+      fall back to a hardlinked copy on the same filesystem. Tests with a fake
+      build: layout, marker, repointing after an upgrade, held builds kept.
 
 ### Phase 5 — docs, audit and release
 
@@ -1126,6 +1201,34 @@ before the binary, and Phase 4's commands get modes for free.
 - [ ] **5.7** Tag 0.1.0. Publish `libsruman`, then `sruman`. Consider an
       AUR `PKGBUILD`.
 
+### Phase 6 — custom runtimes (after 0.1.0; D16)
+
+- [ ] **6.0** Spike, on a copy of a real sniper build: (a) replace one
+      library's files (SDL2 from Valve's repo) and run a game through
+      pressure-vessel on the copy; does anything (`ld.so.cache`, mtree
+      checks, `.ref`) need regenerating? (b) fetch a `.deb` of the exact
+      version in `manifest.dpkg` from Valve's steamrt apt repo and check its
+      `InRelease` signature; how long are old versions kept there? (c) how
+      many of the 527 packages have maintainer scripts beyond `ldconfig`
+      and triggers? The answers settle 6.2–6.4.
+- [ ] **6.1** `SLRBUILD` format and local catalog entries (D8: `source =
+      "local"`, base, recipe path), `build create` and `build inspect`.
+- [ ] **6.2** apt client in `libsruman` (behind `download`): `Packages`
+      indexes of Valve's repo and the base's Debian release, signature
+      checks, `.deb` reading (ar, then tar with xz or zstd). New
+      dependencies justified under §7.2.
+- [ ] **6.3** `build commit`: copy the base (reflink, else hardlinks), apply
+      removals and unpacks in `.staging` under the store lock, write
+      `manifest.dpkg` and mtree, rename into place. Tests with fake bases
+      and fake `.deb`s.
+- [ ] **6.4** `build override`, `add`, `remove`: dependency checks against the
+      resulting manifest; refuse packages whose scripts do more than
+      `ldconfig` and triggers.
+- [ ] **6.5** `export` and `import` for recipes and full `.tar.zst` builds.
+- [ ] **6.6** `build rebase`.
+- [ ] **6.7** Level 2: Debian's apt and dpkg in the SDK image under
+      bubblewrap, for packages with scripts and dependency resolution.
+
 ---
 
 ## Downstream integration (later; recorded here to check the API against)
@@ -1140,7 +1243,9 @@ release cycle, and the CLI with `--json` is the stable interface.
   profile is launched as `sruman execute -p <profile> --wait -- <exe> <args>`.
   Later, Steam itself (for DRM checks) in overlay mode.
 - **lootrs**: optionally launch `slr` profiles through `sruman`, and Steam
-  games through `gaki-cli`, both as external runners.
+  games through `gaki-cli`, both as external runners. Its `umu` runner gets
+  every Steam Linux Runtime from `sruman provide-umu` (D15): a hard
+  dependency for Protons that need one, so umu never downloads one itself.
 - **One store for all three**: `$XDG_DATA_HOME/sruman/runtimes` and the
   flock protocol mean a runtime downloads once and no tool removes a build
   another is running.

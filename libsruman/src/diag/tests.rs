@@ -3,7 +3,7 @@ use std::{fs, os::unix::fs::PermissionsExt};
 use serde_json::json;
 
 use super::*;
-use crate::{store::Installed, version::BuildId};
+use crate::{model::SlrMode, store::Installed, version::BuildId};
 
 /// Writes an executable `sh` script. Callers hold `test_lock::spawns()`:
 /// a fork elsewhere while the file is open for writing would make its exec
@@ -94,7 +94,7 @@ fn tools_are_found_for_each_runtime_kind() {
     let sniper = tmp.path().join("sniper");
     let soldier = tmp.path().join("soldier");
     let scout = tmp.path().join("scout");
-    let ldlp = tmp.path().join("scout-ldlp");
+    let ldlp = scout.join("steam-runtime");
     for (dir, rel) in [
         (&sniper, "pressure-vessel/bin"),
         (&sniper, "pressure-vessel-arm64/bin"),
@@ -111,6 +111,7 @@ fn tools_are_found_for_each_runtime_kind() {
         runtime: installed("sniper", &sniper),
         host: None,
         entry: Entry::Container,
+        mode: SlrMode::Container,
     };
     assert_eq!(
         tools_for(&container, Arch::X86_64),
@@ -125,6 +126,7 @@ fn tools_are_found_for_each_runtime_kind() {
         runtime: installed("scout", &scout),
         host: Some(installed("soldier", &soldier)),
         entry: Entry::ScoutOnSoldier,
+        mode: SlrMode::Container,
     };
     let tools = tools_for(&on_soldier, Arch::X86_64).unwrap();
     assert_eq!(
@@ -134,10 +136,12 @@ fn tools_are_found_for_each_runtime_kind() {
     // soldier has no arm64 build of pressure-vessel here.
     assert_eq!(tools_for(&on_soldier, Arch::Arm64), None);
 
+    // Overlay mode: scout's own LD_LIBRARY_PATH runtime, no soldier.
     let plain = Runtimes {
-        runtime: installed("scout-ldlp", &ldlp),
+        runtime: installed("scout", &scout),
         host: None,
-        entry: Entry::Ldlp,
+        entry: Entry::ScoutOnSoldier,
+        mode: SlrMode::Overlay,
     };
     let tools = tools_for(&plain, Arch::X86_64).unwrap();
     assert_eq!(
@@ -153,9 +157,10 @@ fn tools_are_found_for_each_runtime_kind() {
 
     // A container build without the tools.
     let bare = Runtimes {
-        runtime: installed("scout", &scout),
+        runtime: installed("soldier", &tmp.path().join("bare")),
         host: None,
         entry: Entry::Container,
+        mode: SlrMode::Container,
     };
     assert_eq!(tools_for(&bare, Arch::X86_64), None);
 }
@@ -274,7 +279,7 @@ fn tool_checks_report_success_and_failure() {
         "{err}"
     );
 
-    // scout-ldlp: no container, so no probe.
+    // Scout's own runtime (overlay mode): no container, so no probe.
     let ldlp = Tools::Ldlp(tmp.path().join("ldlp"));
     assert_eq!(bwrap_probe(&ldlp, t).level, Level::Ok);
     assert_eq!(check_requirements(&ldlp, t).level, Level::Warn);
