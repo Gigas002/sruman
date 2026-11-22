@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- libgameprofiles comes from crates.io (`0.1`) instead of its git master
+  branch; dependencies updated.
 - Profiles use the [libgameprofiles](https://github.com/Gigas002/libgameprofiles)
   format and loader, shared with lootrs and gaki, instead of sruman's own
   copy: a profile file now needs `runner = "slr"` next to its `[slr]`
