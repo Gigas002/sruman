@@ -108,10 +108,13 @@ impl<R: Seek> Seek for Counting<R> {
     }
 }
 
-/// Decoder threads: enough to keep up with the disk, bounded so a big
-/// machine doesn't spend memory on idle workers.
+/// Decoder threads. Each holds a whole xz block, compressed and unpacked
+/// (Valve's blocks unpack to 24 MiB), so memory grows about 70 MiB per
+/// worker; past two, the single tar consumer is the bottleneck and more
+/// workers only cost memory (docs/AUDIT.md: 2 workers 0.85 s / 183 MiB on
+/// an 800 MiB build, 12 workers 1.06 s / 647 MiB, streaming 2.9 s / 19 MiB).
 fn workers() -> u32 {
-    std::thread::available_parallelism().map_or(1, |n| n.get().min(16) as u32)
+    std::thread::available_parallelism().map_or(1, |n| n.get().min(2) as u32)
 }
 
 /// Bounds on what an archive may unpack to, so a hostile or broken archive

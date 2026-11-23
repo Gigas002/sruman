@@ -392,3 +392,29 @@ fn list_builds_reads_the_images_page() {
     let builds = list_builds(&*server, catalog().get("sniper").unwrap(), Some(3)).unwrap();
     assert!(builds.contains(&id(NEW)));
 }
+
+/// PLAN 5.5b: a first refresh costs a fixed number of requests per runtime
+/// (timestamp, channel pointers, then four per distinct channel build:
+/// sums, archive HEAD, os-release, manifest), however many builds the server
+/// keeps; the build listing is never read.
+#[test]
+fn a_full_refresh_costs_requests_per_channel_not_per_build() {
+    let server = server();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = SyncDir::new(tmp.path());
+    server.take_log();
+    refresh(&*server, &catalog(), &dir, &only("sniper"));
+    let log = server.take_log();
+    let builds = dir.load("sniper").unwrap().builds.len();
+    let pointers = Channel::ALL
+        .iter()
+        .flat_map(|c| c.pointer_files())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    assert!(
+        log.len() <= 1 + pointers + 4 * builds,
+        "{} requests for {builds} builds: {log:#?}",
+        log.len()
+    );
+    assert!(!log.iter().any(|url| url.ends_with("/images/")), "{log:#?}");
+}
