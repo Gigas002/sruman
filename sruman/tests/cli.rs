@@ -154,13 +154,26 @@ fn wait_for(mut done: impl FnMut() -> bool) -> bool {
     false
 }
 
+/// Every exit code (0 ok, 1 failed, 2 invalid, 3 not running, 4 busy), and
+/// a snapshot of what each failure prints (PLAN 5.5c): every error should
+/// name a fix.
 #[test]
 fn parse_matrix_exit_codes() {
     let s = Sruman::new();
-    let (_, help) = expect(&s.run(&[]), 2);
+    let root = s.root().display().to_string();
+    let mut shown = String::new();
+    let mut case = |args: &[&str], code: i32| -> String {
+        let (_, err) = expect(&s.run(args), code);
+        shown.push_str(&format!(
+            "$ sruman {} -> {code}\n{}\n",
+            args.join(" "),
+            err.replace(&root, "<tmp>").trim_end()
+        ));
+        err
+    };
+
+    let help = case(&[], 2);
     assert!(help.contains("Usage: sruman [OPTIONS] <COMMAND>"), "{help}");
-    let (version, _) = expect(&s.run(&["--version"]), 0);
-    assert!(version.starts_with("sruman "), "{version}");
     for args in [
         &["frobnicate"][..],
         &["-S", "sniper"],
@@ -169,21 +182,48 @@ fn parse_matrix_exit_codes() {
         &["runtimes", "--wait"],
         &["stop"],
     ] {
-        expect(&s.run(args), 2);
+        case(args, 2);
     }
     // Valid to clap, but no profile to run with.
-    let (_, err) = expect(&s.run(&["shell"]), 2);
+    let err = case(&["shell"], 2);
     assert!(err.contains("default_profile"), "{err}");
-    let (_, err) = expect(&s.run(&["run", "nothing"]), 2);
+    let err = case(&["run", "nothing"], 2);
     assert!(err.contains("no game named `nothing`"), "{err}");
-    let (_, err) = expect(&s.run(&["stop", "nothing"]), 3);
+    let err = case(&["stop", "nothing"], 3);
     assert!(err.contains("`nothing` is not running"), "{err}");
-    let (_, err) = expect(&s.run(&["logs", "nothing"]), 3);
+    let err = case(&["logs", "nothing"], 3);
     assert!(err.contains("no run logs"), "{err}");
+    let err = case(&["import", "/nonexistent"], 1);
+    assert!(err.contains("/nonexistent: No such file"), "{err}");
+    // The store is locked by someone else.
+    {
+        let store = libsruman::store::Store::open(s.root().join("data/sruman/runtimes"));
+        let _lock = store.lock().unwrap();
+        let err = case(&["import", "/nonexistent"], 4);
+        assert!(err.contains("busy") || err.contains("lock"), "{err}");
+    }
     // A broken config is exit 2 before any command runs.
     s.write_config("config.toml", "log_keep = 0\n");
-    let (_, err) = expect(&s.run(&["runtimes"]), 2);
+    let err = case(&["runtimes"], 2);
     assert!(err.contains("`log_keep`"), "{err}");
+    drop(case);
+
+    let (version, _) = expect(&s.run(&["--version"]), 0);
+    assert!(version.starts_with("sruman "), "{version}");
+    // The command list in the help differs with the features.
+    if cfg!(all(
+        feature = "download",
+        feature = "json",
+        feature = "diag"
+    )) {
+        insta::assert_snapshot!("errors_full", shown);
+    } else if cfg!(not(any(
+        feature = "download",
+        feature = "json",
+        feature = "diag"
+    ))) {
+        insta::assert_snapshot!("errors_minimal", shown);
+    }
 }
 
 #[test]

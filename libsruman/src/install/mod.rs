@@ -85,7 +85,7 @@ pub enum InstallError {
     },
     /// Unpacking an archive failed.
     #[error(transparent)]
-    Extract(#[from] ExtractError),
+    Extract(ExtractError),
     /// The runtime store failed.
     #[error(transparent)]
     Store(#[from] StoreError),
@@ -101,6 +101,17 @@ pub enum InstallError {
     /// The operation was cancelled through its [`CancelFlag`].
     #[error("cancelled")]
     Cancelled,
+}
+
+/// A cancelled extraction is [`InstallError::Cancelled`], like a cancelled
+/// download.
+impl From<ExtractError> for InstallError {
+    fn from(err: ExtractError) -> Self {
+        match err {
+            ExtractError::Cancelled(_) => Self::Cancelled,
+            err => Self::Extract(err),
+        }
+    }
 }
 
 impl From<crate::progress::Cancelled> for InstallError {

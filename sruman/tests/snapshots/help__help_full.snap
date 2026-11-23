@@ -1,0 +1,1138 @@
+---
+source: sruman/tests/help.rs
+expression: out
+---
+===== sruman --help
+Steam Linux Runtime manager: install and update runtimes, run native games in them through profiles and prefixes
+
+Usage: sruman [OPTIONS] <COMMAND>
+
+Commands:
+  sync         Refresh the sync index
+  install      Install runtimes, with their dependencies
+  upgrade      Upgrade installed runtimes (all, or the named ones)
+  outdated     Installed runtimes with a newer build in the sync index
+  remove       Remove runtimes
+  search       Search runtimes, or their packages
+  info         Show a runtime: build, channel, sizes, dependencies, users
+  runtimes     List installed runtimes
+  builds       List a runtime's builds on the server
+  files        List an installed build's files
+  verify       Check installed builds against their file lists (all without arguments)
+  clean        Clean the download cache and old builds
+  import       Install from local archives or directories
+  run          Run a game from games.toml
+  execute      Run an executable once with a profile
+  shell        Open a shell in a profile's runtime and prefix
+  status       Show running games and sessions
+  stop         Stop games, profiles' sessions or processes
+  killall      Stop everything sruman started
+  list         List games
+  show         Show a game: executable, profile, runtime, prefix, environment
+  check        Check games and profiles without launching (all without arguments)
+  logs         Print a game's latest run log
+  init         Create or update a profile's prefix
+  profiles     Manage profiles
+  provide-umu  Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so umu runs it instead of downloading its own
+  doctor       Check user namespaces, bubblewrap and the runtimes
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version
+
+===== sruman sync --help
+Refresh the sync index
+
+Usage: sruman sync [OPTIONS]
+
+Options:
+      --force
+          Refetch even if nothing changed on the server
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman install --help
+Install runtimes, with their dependencies
+
+Usage: sruman install [OPTIONS] <RUNTIMES>...
+
+Arguments:
+  <RUNTIMES>...
+          Runtimes, optionally pinned: `sniper` or `sniper=<build>`
+
+Options:
+      --needed
+          Skip runtimes that are installed already
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --download-only
+          Download without installing
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman upgrade --help
+Upgrade installed runtimes (all, or the named ones)
+
+Usage: sruman upgrade [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          
+
+Options:
+      --sync
+          Refresh the sync index first
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --allow-downgrade
+          Go back to the channel's build when an installed one is newer
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --download-only
+          Download without installing
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman outdated --help
+Installed runtimes with a newer build in the sync index
+
+Usage: sruman outdated [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman remove --help
+Remove runtimes
+
+Usage: sruman remove [OPTIONS] <RUNTIMES>...
+
+Arguments:
+  <RUNTIMES>...
+          
+
+Options:
+      --force
+          Remove even if a profile uses it (never a build in use)
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman search --help
+Search runtimes, or their packages
+
+Usage: sruman search [OPTIONS] [TERMS]...
+
+Arguments:
+  [TERMS]...
+          Regular expressions; none lists everything
+
+Options:
+      --packages
+          Search the package manifests
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman info --help
+Show a runtime: build, channel, sizes, dependencies, users
+
+Usage: sruman info [OPTIONS] <RUNTIMES>...
+
+Arguments:
+  <RUNTIMES>...
+          
+
+Options:
+      --packages
+          List its packages
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --json
+          Print JSON
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman runtimes --help
+List installed runtimes
+
+Usage: sruman runtimes [OPTIONS]
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman builds --help
+List a runtime's builds on the server
+
+Usage: sruman builds [OPTIONS] <RUNTIME>
+
+Arguments:
+  <RUNTIME>
+          
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman files --help
+List an installed build's files
+
+Usage: sruman files [OPTIONS] <RUNTIME>
+
+Arguments:
+  <RUNTIME>
+          
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman verify --help
+Check installed builds against their file lists (all without arguments)
+
+Usage: sruman verify [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          
+
+Options:
+      --full
+          Check content hashes too
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman clean --help
+Clean the download cache and old builds
+
+Usage: sruman clean [OPTIONS]
+
+Options:
+      --all
+          Every cached archive
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman import --help
+Install from local archives or directories
+
+Usage: sruman import [OPTIONS] <SOURCES>...
+
+Arguments:
+  <SOURCES>...
+          
+
+Options:
+      --link
+          Register a directory in place, without copying
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman run --help
+Run a game from games.toml
+
+Usage: sruman run [OPTIONS] <GAME> [-- <ARGS>...]
+
+Arguments:
+  <GAME>
+          
+
+  [ARGS]...
+          Extra arguments appended to the game's own
+
+Options:
+  -p, --profile <PROFILE>
+          Use this profile for this run
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --wait
+          Stay attached: stream output and exit with the game's code
+
+      --debug
+          Verbose runtime logging for this run
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman execute --help
+Run an executable once with a profile
+
+Usage: sruman execute [OPTIONS] <TARGET> [-- <ARGS>...]
+
+Arguments:
+  <TARGET>
+          A path, or a program in the runtime's PATH
+
+  [ARGS]...
+          Arguments for the executable
+
+Options:
+  -p, --profile <PROFILE>
+          The profile [default: default_profile from config.toml]
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --wait
+          Stay attached: stream output and exit with the program's code
+
+      --debug
+          Verbose runtime logging for this run
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman shell --help
+Open a shell in a profile's runtime and prefix
+
+Usage: sruman shell [OPTIONS]
+
+Options:
+  -p, --profile <PROFILE>
+          The profile [default: default_profile from config.toml]
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --debug
+          Verbose runtime logging
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman status --help
+Show running games and sessions
+
+Usage: sruman status [OPTIONS]
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman stop --help
+Stop games, profiles' sessions or processes
+
+Usage: sruman stop [OPTIONS] <TARGETS>...
+
+Arguments:
+  <TARGETS>...
+          A game, a profile or a pid
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman killall --help
+Stop everything sruman started
+
+Usage: sruman killall [OPTIONS]
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman list --help
+List games
+
+Usage: sruman list [OPTIONS]
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman show --help
+Show a game: executable, profile, runtime, prefix, environment
+
+Usage: sruman show [OPTIONS] <GAME>
+
+Arguments:
+  <GAME>
+          
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman check --help
+Check games and profiles without launching (all without arguments)
+
+Usage: sruman check [OPTIONS] [TARGETS]...
+
+Arguments:
+  [TARGETS]...
+          Games or profiles
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman logs --help
+Print a game's latest run log
+
+Usage: sruman logs [OPTIONS] <GAME>
+
+Arguments:
+  <GAME>
+          
+
+Options:
+      --path
+          Print the log's path instead
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman init --help
+Create or update a profile's prefix
+
+Usage: sruman init [OPTIONS] <PROFILE>
+
+Arguments:
+  <PROFILE>
+          
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles --help
+Manage profiles
+
+Usage: sruman profiles [OPTIONS] <COMMAND>
+
+Commands:
+  list        List profiles, implicit ones included
+  show        Show a profile: runtime build, mode, prefix and who shares it
+  new         Create a profile, then its prefix
+  edit        Edit a profile in $EDITOR, then check it
+  edit-games  Edit games.toml in $EDITOR, then check it
+  delete      Delete profiles
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles list --help
+List profiles, implicit ones included
+
+Usage: sruman profiles list [OPTIONS]
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles show --help
+Show a profile: runtime build, mode, prefix and who shares it
+
+Usage: sruman profiles show [OPTIONS] <PROFILE>
+
+Arguments:
+  <PROFILE>
+          
+
+Options:
+      --json
+          Print JSON
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles new --help
+Create a profile, then its prefix
+
+Usage: sruman profiles new [OPTIONS] --runtime <RUNTIME> <PROFILE>
+
+Arguments:
+  <PROFILE>
+          
+
+Options:
+  -r, --runtime <RUNTIME>
+          Its runtime: `sniper` or `sniper=<build>`
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --mode <MODE>
+          Where its libraries come from
+          
+          [default: container]
+          [possible values: container, overlay]
+
+      --prefix <DIR>
+          Its prefix directory [default: prefix_root/PROFILE]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles edit --help
+Edit a profile in $EDITOR, then check it
+
+Usage: sruman profiles edit [OPTIONS] <PROFILE>
+
+Arguments:
+  <PROFILE>
+          
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles edit-games --help
+Edit games.toml in $EDITOR, then check it
+
+Usage: sruman profiles edit-games [OPTIONS]
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman profiles delete --help
+Delete profiles
+
+Usage: sruman profiles delete [OPTIONS] <PROFILES>...
+
+Arguments:
+  <PROFILES>...
+          
+
+Options:
+      --prefix
+          Also delete the prefix, unless it's shared or in use
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman provide-umu --help
+Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so umu runs it instead of downloading its own
+
+Usage: sruman provide-umu [OPTIONS] <RUNTIME|--appid <ID>>
+
+Arguments:
+  [RUNTIME]
+          The runtime, optionally `=build`; the current build by default
+
+Options:
+      --appid <ID>
+          Pick the runtime by Steam app id (Proton's `require_tool_appid`)
+
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+      --json
+          Print JSON
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman doctor --help
+Check user namespaces, bubblewrap and the runtimes
+
+Usage: sruman doctor [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          Runtimes to check; all installed ones without arguments
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help

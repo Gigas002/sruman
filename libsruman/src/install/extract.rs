@@ -175,7 +175,15 @@ pub fn extract_tar_xz(
             reported = now;
         }
     };
-    let top = extract_tar(xz, dest, limits, cancel, &mut || tick(progress))?;
+    let top = extract_tar(xz, dest, limits, cancel, &mut || tick(progress)).map_err(|err| {
+        // The decoder threads may surface a cancelled read as some other
+        // error (a short stream, a wrapped error): the flag decides.
+        if cancel.is_cancelled() {
+            ExtractError::Cancelled(Cancelled)
+        } else {
+            err
+        }
+    })?;
     // The index and footer at the end were read first and never counted.
     let size = fs::metadata(archive).map_or(0, |m| m.len());
     read.fetch_max(size, Ordering::Relaxed);

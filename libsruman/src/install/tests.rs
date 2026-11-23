@@ -1124,6 +1124,107 @@ fn upgrade_installs_the_newer_channel_build() {
     assert_eq!(fake.store.installed_of("sniper").unwrap().len(), 2);
 }
 
+/// Cancels the commit when `phase` starts (`mid = false`) or at its first
+/// progress tick (`mid = true`).
+struct CancelAt {
+    phase: Phase,
+    mid: bool,
+    armed: bool,
+    cancel: CancelFlag,
+}
+
+impl Progress for CancelAt {
+    fn begin(&mut self, _: &str) {}
+    fn phase(&mut self, phase: Phase, _: Option<u64>) {
+        self.armed = phase == self.phase;
+        if self.armed && !self.mid {
+            self.cancel.cancel();
+        }
+    }
+    fn advance(&mut self, _: u64) {
+        if self.armed {
+            self.cancel.cancel();
+        }
+    }
+    fn end(&mut self, _: bool) {}
+}
+
+/// Crash consistency (PLAN 5.5c): an upgrade cancelled at any phase leaves
+/// `current` on a complete build, every installed build whole, nothing
+/// half-installed visible, and a retry that works.
+#[test]
+fn an_upgrade_cancelled_at_any_phase_leaves_the_store_consistent() {
+    for phase in [
+        Phase::Download,
+        Phase::Verify,
+        Phase::Extract,
+        Phase::Commit,
+    ] {
+        for mid in [false, true] {
+            let case = format!("{phase:?} (mid: {mid})");
+            let fake = Fake::new();
+            assert!(fake.commit(&fake.tx(&["sniper"], &opts()).unwrap()).ok());
+            fake.move_stable(SNIPER_NEW, "t2");
+            let tx = fake.up(&Upgrade::All, false).unwrap();
+            let cancel = CancelFlag::new();
+            let mut progress = CancelAt {
+                phase,
+                mid,
+                armed: false,
+                cancel: cancel.clone(),
+            };
+            let report = {
+                let lock = fake.store.lock().unwrap();
+                tx.commit(
+                    &fake.fetch,
+                    &fake.store,
+                    &lock,
+                    &fake.pkg,
+                    &mut progress,
+                    &cancel,
+                )
+            };
+
+            let current = fake.store.current("sniper").unwrap();
+            let builds = fake.store.installed_of("sniper").unwrap();
+            for build in &builds {
+                assert!(
+                    build.meta.is_some(),
+                    "{case}: {} has no metadata",
+                    build.build
+                );
+                assert!(
+                    build.dir.join("run").exists() || fs::read_dir(&build.dir).unwrap().count() > 1,
+                    "{case}: {} is empty",
+                    build.build
+                );
+            }
+            match &report.failed {
+                Some((_, InstallError::Cancelled)) => {
+                    assert_eq!(current, id(SNIPER_OLD), "{case}");
+                    assert_eq!(builds.len(), 1, "{case}: a cancelled build is visible");
+                }
+                // Too late to cancel: the upgrade is complete.
+                None => assert_eq!(current, id(SNIPER_NEW), "{case}"),
+                Some((_, e)) => panic!("{case}: {e}"),
+            }
+            // A crash would leave `.staging`; the next lock clears it.
+            let staging = fake.store.root().join(".staging");
+            fs::create_dir_all(staging.join("leftover/files")).unwrap();
+            drop(fake.store.lock().unwrap());
+            assert!(
+                !staging.exists() || fs::read_dir(&staging).unwrap().count() == 0,
+                "{case}"
+            );
+
+            // Retrying finishes the job.
+            let tx = fake.up(&Upgrade::All, false).unwrap();
+            assert!(fake.commit(&tx).ok(), "{case}: retry failed");
+            assert_eq!(fake.store.current("sniper"), Some(id(SNIPER_NEW)), "{case}");
+        }
+    }
+}
+
 #[test]
 fn going_back_needs_uu() {
     let fake = Fake::new();

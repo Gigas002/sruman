@@ -802,7 +802,9 @@ fn remote_info(app: &App, target: &RuntimeRef) -> Result<Remote, AppError> {
 
 #[cfg(not(feature = "download"))]
 fn remote_info(_: &App, target: &RuntimeRef) -> Result<Remote, AppError> {
-    Err(AppError::Invalid(format!("`{target}` is not installed")))
+    Err(AppError::Invalid(format!(
+        "`{target}` is not installed; this sruman is built without downloads, so import it with `sruman import <dir>`"
+    )))
 }
 
 // --- runtimes / builds / files ------------------------------------------------
@@ -1162,7 +1164,13 @@ pub fn import(app: &mut App, sources: &[PathBuf], link: bool) -> Result<u8, AppE
             }
             Err(err) => {
                 code = code.max(err.exit_code());
-                app.out.error(format!("{}: {err}", source.display()))?;
+                // Most errors name the path already.
+                let (shown, message) = (source.display().to_string(), err.to_string());
+                if message.starts_with(&shown) {
+                    app.out.error(message)?;
+                } else {
+                    app.out.error(format!("{shown}: {message}"))?;
+                }
             }
         }
     }

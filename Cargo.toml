@@ -37,6 +37,8 @@ sha2 = "0.11"
 tempfile = "3"
 # Property tests (PLAN 5.5): parsers on arbitrary input, ordering laws. Dev-only.
 proptest = "1"
+# Snapshot tests of help, summaries and errors (PLAN 5.5c). Dev-only.
+insta = "1"
 thiserror = "2"
 toml = "1"
 # App log (sruman): a daily file plus stderr with -v, as in lootrs.
