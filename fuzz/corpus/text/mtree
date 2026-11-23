@@ -1,0 +1,4 @@
+#mtree
+./files type=dir mode=755
+./files/a\040b type=file mode=644 size=5 sha256=00
+./l type=link link=files
