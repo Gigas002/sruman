@@ -3,7 +3,7 @@
 # an error, so a typo never silently does nothing. `--config <file>` reads
 # another file.
 
-# default_profile = "sniper"         # for `execute` and `shell` without -p, and games without `profile`
+# default_profile = "steamrt4"       # the latest runtime; for `execute` and `shell` without -p, and games without `profile`
 # auto_install = false               # install a missing runtime at launch without asking
 # prefix_root = "~/.local/share/sruman/prefixes"   # where `profiles new` puts prefixes
 
@@ -18,17 +18,17 @@
 # log_keep = 10                      # daily app logs and run logs per game kept (at least 1)
 
 # [channels]
-# sniper = "beta"
+# steamrt4 = "beta"
 
 # Change a built-in runtime, or add one (a new one needs `server_dir`,
 # `archives` and `entry`). `base_url` must be https://, except for a mirror on
 # localhost.
 # [[runtime]]
-# name = "sniper"
-# description = "Steam Linux Runtime 3.0 (sniper), from a local mirror"
+# name = "steamrt4"
+# description = "Steam Linux Runtime 4, from a local mirror"
 # base_url = "http://localhost:8080"
-# server_dir = "steamrt3"
-# archives = { x86_64 = "SteamLinuxRuntime_sniper.tar.xz" }
+# server_dir = "steamrt4"
+# archives = { x86_64 = "SteamLinuxRuntime_4.tar.xz" }
 # entry = "container"                # or "scout-on-soldier"
 # depends = []
 # pointers = { stable = ["latest-public-stable"], beta = ["latest-public-beta"] }

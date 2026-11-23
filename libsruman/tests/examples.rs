@@ -27,7 +27,7 @@ fn example_profiles_load_and_validate_without_errors() {
             "scout",
             "shared-prefix-a",
             "shared-prefix-b",
-            "sniper"
+            "steamrt4"
         ]
     );
     for profile in loaded.profiles.values() {
@@ -48,6 +48,6 @@ fn example_games_load_and_validate() {
     assert!(games.issues.is_empty(), "{:#?}", games.issues);
     assert_eq!(games.games.len(), 3);
     // The exes don't exist here, which is only a warning.
-    let issues = games.validate(&profiles, Some("sniper"), &ctx);
+    let issues = games.validate(&profiles, Some("steamrt4"), &ctx);
     assert!(issues.iter().all(|i| !i.is_error()), "{issues:#?}");
 }

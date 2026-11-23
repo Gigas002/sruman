@@ -25,7 +25,9 @@ from, how they're checked, troubleshooting). Examples are in
   builds of `scout`, `soldier`, `sniper` and `steamrt4` from Valve's
   public image server (`repo.steampowered.com`), checked against Valve's
   `SHA256SUMS`. It shows which Debian packages change between builds, and
-  several builds can be installed side by side.
+  several builds can be installed side by side. Use **`steamrt4`**, the
+  latest, for native games; the older ones are only for games and Protons
+  that need them.
 - **Prefixes for native games.** A profile picks a runtime and an optional
   prefix directory. The game then gets the prefix as its home, so saves and
   configs stay there instead of in your real home, the way a wine prefix keeps
@@ -44,22 +46,22 @@ from, how they're checked, troubleshooting). Examples are in
 
 ```sh
 sruman upgrade --sync                     # refresh the index and upgrade installed runtimes
-sruman install sniper                     # install a runtime
-sruman install sniper=3.0.20261021.266025 # install a specific build
-sruman search sniper / info sniper        # search / show a runtime
+sruman install steamrt4                   # install a runtime (the latest)
+sruman install steamrt4=4.0.20261021.265997 # install a specific build
+sruman search steamrt4 / info steamrt4    # search / show a runtime
 sruman runtimes / outdated / verify       # installed, upgradable, check their files
 sruman remove soldier                     # remove
-sruman import ~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_sniper --link   # adopt Steam's copy
+sruman import ~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_4 --link   # adopt Steam's copy
 
 sruman run hollow-knight                  # run a game from games.toml
-sruman execute -p scout ./game.x86_64     # run an executable with a profile
-sruman profiles list / show scout         # profiles
-sruman profiles new indie -r sniper --mode overlay   # a profile on your system, no container
+sruman execute -p steamrt4 ./game.x86_64  # run an executable with a profile
+sruman profiles list / show steamrt4      # profiles
+sruman profiles new indie -r steamrt4 --mode overlay   # a profile on your system, no container
 sruman list / check                       # games; check games and profiles
 sruman run hollow-knight --wait           # run in the foreground, with its output and exit code
 sruman logs hollow-knight                 # the latest run log
 sruman status / stop hollow-knight        # running games / stop one
-sruman shell -p scout                     # a shell in the profile's runtime and prefix
+sruman shell -p steamrt4                  # a shell in the profile's runtime and prefix
 sruman provide-umu --appid 4183110        # hand steamrt4 to umu (UMU_FOLDERS_PATH, no umu downloads)
 sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```

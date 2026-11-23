@@ -11,6 +11,10 @@ What sruman installs, where it gets it, and how that's checked.
 | `sniper`     | `steamrt3` | `SteamLinuxRuntime_sniper.tar.xz`    | Debian 11      | container (pressure-vessel)               |
 | `steamrt4`   | `steamrt4` | `SteamLinuxRuntime_4.tar.xz` (+ `-arm64`) | Debian 13 | container (pressure-vessel)               |
 
+`steamrt4` is the latest and the one to use for native games and new
+profiles. The older runtimes stay for games built against them and for
+Protons whose `toolmanifest.vdf` asks for them.
+
 ## Where builds come from
 
 Everything comes from `https://repo.steampowered.com/<server dir>/images/`:
@@ -38,8 +42,8 @@ mirror on `localhost`.
 `latest-public-beta.txt`, which Valve updates first. `steam` is what the
 Steam client uses right now (`latest-container-runtime-depot.txt`). Set
 `channel` in `config.toml`, or per runtime under `[channels]`; `sruman
-builds sniper` lists every build on the server, and `sniper=<build>` installs
-or pins one.
+builds steamrt4` lists every build on the server, and `steamrt4=<build>`
+installs or pins one.
 
 ## Why images and not apt
 

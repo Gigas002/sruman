@@ -12,7 +12,7 @@ profile = "scout"                          # a file in profiles/, or an implicit
 [[game]]
 name = "supertux"
 exe = "~/Games/SuperTux/run.sh"
-profile = "sniper"                         # implicit profiles work here too
+profile = "steamrt4"                       # implicit profiles work here too
 env = { SDL_VIDEODRIVER = "wayland" }      # merged over the profile's env
 
 [[game]]

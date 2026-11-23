@@ -1,9 +1,11 @@
-# ~/.config/sruman/profiles/sniper.toml
+# ~/.config/sruman/profiles/steamrt4.toml
 # `name` must match the file name. Paths may start with `~`.
-# Without this file, `sniper` still works as an implicit profile with the
+# Steam Linux Runtime 4, the latest: use it for native games unless one
+# needs an older runtime.
+# Without this file, `steamrt4` still works as an implicit profile with the
 # defaults below (no prefix: the game sees your real home).
 
-name = "sniper"
+name = "steamrt4"
 runner = "slr"
 # runner_args = []                         # pressure-vessel options, e.g. ["--verbose"]
 # wrappers = ["gamemoderun", "mangohud"]   # in front of everything, outside the container
@@ -14,6 +16,6 @@ runner = "slr"
 # SDL_VIDEODRIVER = "wayland"
 
 [slr]
-runtime = "sniper"                         # or "sniper=3.0.20261021.266025" to pin a build
+runtime = "steamrt4"                       # or "steamrt4=4.0.20261021.265997" to pin a build
 # filesystems_rw = ["~/Games"]             # host paths the container may write
 # filesystems_ro = []                      # host paths it may read
