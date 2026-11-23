@@ -22,6 +22,7 @@ impl Default for UreqFetch {
 }
 
 impl UreqFetch {
+    /// A client with sruman's user agent and timeouts.
     pub fn new() -> Self {
         let config = Agent::config_builder()
             .user_agent(USER_AGENT)

@@ -45,14 +45,19 @@ pub fn variant(app_id: u32) -> Option<&'static str> {
     }
 }
 
+/// Errors from providing a runtime to umu.
 #[derive(Debug, thiserror::Error)]
 pub enum UmuError {
+    /// The runtime store failed.
     #[error(transparent)]
     Store(#[from] StoreError),
 
+    /// A filesystem operation failed.
     #[error("{}: {source}", path.display())]
     Io {
+        /// The file or directory it failed on.
         path: PathBuf,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
@@ -86,6 +91,7 @@ pub struct Folders {
 }
 
 impl Folders {
+    /// umu's folders at `root` (sruman's data directory).
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }

@@ -46,19 +46,26 @@ impl std::fmt::Display for SessionTag {
 /// One process, as `/proc` shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessInfo {
+    /// Process id.
     pub pid: i32,
+    /// Parent's process id.
     pub ppid: i32,
+    /// Process group id.
     pub pgid: i32,
     /// Clock ticks after boot.
     pub start: u64,
+    /// Command line, one argument per entry.
     pub cmdline: Vec<String>,
 }
 
 /// The processes sharing one tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
+    /// The tag the processes share.
     pub tag: SessionTag,
+    /// The profile they run with (`SRUMAN_PROFILE`).
     pub profile: Option<String>,
+    /// The prefix they run in (`SRUMAN_PREFIX`).
     pub prefix: Option<PathBuf>,
     /// The oldest process whose parent isn't in the session: the launcher's
     /// child (wrapper or runtime entry point).
@@ -198,14 +205,19 @@ pub enum Stopped {
     Killed,
 }
 
+/// Errors from stopping a session.
 #[derive(Debug, thiserror::Error)]
 pub enum StopError {
+    /// Sending a signal failed.
     #[error("signalling process {pid}: {source}")]
     Signal {
+        /// The process.
         pid: i32,
+        /// The underlying error.
         #[source]
         source: std::io::Error,
     },
+    /// The session survived `SIGKILL`.
     #[error("session `{0}` is still running after SIGKILL")]
     Stuck(SessionTag),
 }

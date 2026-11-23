@@ -12,14 +12,18 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(test)]
 mod tests;
 
+/// A string that isn't a valid build id, runtime name or channel.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParseError {
+    /// Not a build id.
     #[error("`{0}` is not a build id: expected dot-separated numbers like `3.0.20261021.266025`")]
     BuildId(String),
+    /// Not a runtime name.
     #[error(
         "`{0}` is not a runtime name: use letters, digits, `.`, `_` and `-`, not starting with `-`"
     )]
     Name(String),
+    /// Not a channel.
     #[error("`{0}` is not a channel: use `stable`, `beta` or `steam`")]
     Channel(String),
 }
@@ -33,6 +37,7 @@ pub struct BuildId {
 }
 
 impl BuildId {
+    /// The build id as written: `3.0.20261021.266025`.
     pub fn as_str(&self) -> &str {
         &self.text
     }
@@ -93,18 +98,21 @@ impl fmt::Display for BuildId {
 /// A runtime, optionally pinned to one build: `sniper` or `sniper=<build>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RuntimeRef {
+    /// Runtime name: `sniper`.
     pub name: String,
     /// `None` follows the newest installed build.
     pub build: Option<BuildId>,
 }
 
 impl RuntimeRef {
+    /// Checks `name` and builds the reference.
     pub fn new(name: impl Into<String>, build: Option<BuildId>) -> Result<Self, ParseError> {
         let name = name.into();
         validate_runtime_name(&name)?;
         Ok(Self { name, build })
     }
 
+    /// Whether an exact build is named (`sniper=<build>`).
     pub fn is_pinned(&self) -> bool {
         self.build.is_some()
     }
@@ -163,8 +171,10 @@ pub enum Channel {
 }
 
 impl Channel {
+    /// Every channel.
     pub const ALL: [Self; 3] = [Self::Stable, Self::Beta, Self::Steam];
 
+    /// The name `config.toml` and the CLI use: `stable`, `beta` or `steam`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Stable => "stable",

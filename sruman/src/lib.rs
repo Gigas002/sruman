@@ -2,6 +2,8 @@
 //! logging, output and the commands. A library target so integration tests
 //! can reach them.
 
+#![forbid(unsafe_code)]
+
 pub mod app;
 pub mod cli;
 pub mod config;

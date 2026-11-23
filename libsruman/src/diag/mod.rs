@@ -29,8 +29,11 @@ use crate::{
 /// How bad a finding is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
+    /// Nothing wrong.
     Ok,
+    /// Works, but something may go wrong.
     Warn,
+    /// Won't work.
     Error,
 }
 
@@ -49,7 +52,9 @@ impl fmt::Display for Level {
 pub struct Finding {
     /// Short name of the check, like `userns` or `system-info`.
     pub check: &'static str,
+    /// How bad it is.
     pub level: Level,
+    /// What was found.
     pub message: String,
     /// What to do about it.
     pub hint: Option<String>,
@@ -241,11 +246,14 @@ impl Tools {
 pub struct ToolOutput {
     /// `None` when it was killed for running too long.
     pub status: Option<ExitStatus>,
+    /// What it printed on stdout.
     pub stdout: Vec<u8>,
+    /// What it printed on stderr.
     pub stderr: String,
 }
 
 impl ToolOutput {
+    /// Whether it ran and exited with status 0.
     pub fn success(&self) -> bool {
         self.status.is_some_and(|s| s.success())
     }
@@ -410,16 +418,20 @@ pub fn check_requirements(tools: &Tools, timeout: Duration) -> Finding {
 pub struct SystemInfo {
     /// The JSON as printed, for bug reports.
     pub raw: String,
+    /// The parsed JSON.
     pub value: Value,
 }
 
 /// Why system-info gave no report.
 #[derive(Debug, thiserror::Error)]
 pub enum DiagError {
+    /// The tool couldn't be started.
     #[error("can't run {SYSTEM_INFO}: {0}")]
     Io(#[from] io::Error),
+    /// The tool failed (its exit status or stderr).
     #[error("{SYSTEM_INFO} failed ({0})")]
     Failed(String),
+    /// The tool's output isn't JSON.
     #[error("{SYSTEM_INFO} printed something that isn't JSON: {0}")]
     BadOutput(#[from] serde_json::Error),
 }

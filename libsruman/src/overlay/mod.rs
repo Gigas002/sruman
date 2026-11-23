@@ -44,14 +44,24 @@ use crate::{
 #[cfg(test)]
 pub(crate) mod tests;
 
+/// Errors from setting up overlay mode.
 #[derive(Debug, thiserror::Error)]
 pub enum OverlayError {
+    /// The build has no platform directory (`*_platform_*`) to take libraries from.
     #[error("{0} has no `*_platform_*` directory")]
     NoPlatform(PathBuf),
+    /// The build's file list can't be read.
     #[error(transparent)]
     Mtree(#[from] MtreeError),
+    /// A filesystem operation failed.
     #[error("{path}: {source}")]
-    Io { path: PathBuf, source: io::Error },
+    Io {
+        /// The file or directory it failed on.
+        path: PathBuf,
+        /// The underlying error.
+        source: io::Error,
+    },
+    /// `ldconfig -p` failed or printed nothing usable (its error).
     #[error("can't list the host's libraries (`ldconfig -p`): {0}")]
     Ldconfig(String),
 }
@@ -66,12 +76,17 @@ fn io_err(path: &Path) -> impl FnOnce(io::Error) -> OverlayError + '_ {
 /// A library ABI, as Debian names its directories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Abi {
+    /// 64-bit x86.
     X86_64,
+    /// 32-bit x86.
     I386,
+    /// 64-bit ARM.
     Aarch64,
 }
 
 impl Abi {
+    /// Debian's multiarch triplet: `x86_64-linux-gnu`, `i386-linux-gnu`,
+    /// `aarch64-linux-gnu`.
     pub fn triplet(self) -> &'static str {
         match self {
             Self::X86_64 => "x86_64-linux-gnu",
@@ -158,6 +173,7 @@ impl HostLibs {
         Self { libs }
     }
 
+    /// The host's file for library `name` of `abi`.
     pub fn get(&self, abi: Abi, name: &str) -> Option<&Path> {
         self.libs.get(&(abi, name.to_owned())).map(PathBuf::as_path)
     }
@@ -168,6 +184,7 @@ impl HostLibs {
 /// One library name a runtime build offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeLib {
+    /// Its ABI.
     pub abi: Abi,
     /// The name the loader looks for: `libSDL2-2.0.so.0`.
     pub name: String,
@@ -548,7 +565,9 @@ fn runtime_is_newer(lib: &RuntimeLib, host: &Path) -> bool {
 /// Where a library a game asks for comes from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolved {
+    /// From the runtime (the file).
     Runtime(PathBuf),
+    /// From the host (the file).
     Host(PathBuf),
     /// Neither has it.
     Missing,
@@ -567,9 +586,13 @@ impl fmt::Display for Resolved {
 /// What a `[slr.lib_overrides]` entry resolves to, per ABI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverrideReport {
+    /// The library name.
     pub name: String,
+    /// The ABI.
     pub abi: Abi,
+    /// The `[slr.lib_overrides]` setting.
     pub setting: LibOverride,
+    /// Where the library comes from with that setting.
     pub resolved: Resolved,
 }
 

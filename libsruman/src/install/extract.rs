@@ -28,20 +28,33 @@ use tar::EntryType;
 
 use crate::progress::{CancelFlag, Cancelled, Progress};
 
+/// Errors from unpacking a runtime archive.
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
+    /// An entry sruman won't unpack (a path escaping the root, a device node, ...).
     #[error("archive entry `{path}`: {reason}")]
-    Refused { path: String, reason: String },
+    Refused {
+        /// The entry's path in the archive.
+        path: String,
+        /// Why it was refused.
+        reason: String,
+    },
+    /// Entries under two different top-level directories (the first two seen).
     #[error("the archive has no single top-level directory (`{0}` and `{1}`)")]
     TopLevel(String, String),
+    /// The archive has no entries.
     #[error("the archive is empty")]
     Empty,
+    /// A filesystem operation failed.
     #[error("{context}: {source}")]
     Io {
+        /// What sruman was doing.
         context: String,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// The operation was cancelled.
     #[error(transparent)]
     Cancelled(#[from] Cancelled),
 }

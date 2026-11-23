@@ -20,6 +20,8 @@ const KNOWN_KEYS: &[&str] = &["name", "exe", "profile", "args", "cwd", "env.*"];
 pub struct Game {
     /// Unique id, used by `sruman run <name>`.
     pub name: String,
+    /// The executable: a path (`~` allowed), or a bare name looked up in the
+    /// runtime's `PATH`.
     pub exe: PathBuf,
     /// Unset: `default_profile` from `config.toml`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,6 +85,7 @@ pub struct LoadedGames {
 }
 
 impl LoadedGames {
+    /// The game called `name`.
     pub fn get(&self, name: &str) -> Option<&Game> {
         self.games.iter().find(|game| game.name == name)
     }
@@ -179,19 +182,26 @@ pub fn load_games(path: &Path) -> LoadedGames {
 /// What a bare run target means (D10).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunTarget<'a> {
+    /// A game from `games.toml`.
     Game(&'a Game),
     /// Absolute: `~` expanded and relative paths joined to the cwd.
     Path(PathBuf),
 }
 
+/// Why a run target couldn't be resolved.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TargetError {
+    /// The target is empty.
     #[error("no run target given")]
     Empty,
-    /// `local` is set when a file of that name is in the current directory.
+    /// No game has that name. `local` is set when a file of that name is in
+    /// the current directory.
     #[error("no game '{name}'{}", local.as_ref().map(|_| format!(" (did you mean ./{name}?)")).unwrap_or_default())]
     UnknownGame {
+        /// The name given.
         name: String,
+        /// The file of that name in the current directory, for the
+        /// `./name` hint.
         local: Option<PathBuf>,
     },
 }

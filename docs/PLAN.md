@@ -1139,7 +1139,7 @@ before the binary, and Phase 4's commands get modes for free.
 - [ ] **5.2** Annotated `examples/config.toml`, `examples/games.toml` and
       `examples/profiles/*.toml`,
       loaded by tests.
-- [ ] **5.3** Run the quality gates (§8) at all three feature levels, with
+- [x] **5.3** Run the quality gates (§8) at all three feature levels, with
       `#![warn(missing_docs)]` on `libsruman`.
 - [ ] **5.4** Manual checks: one game per runtime (Hollow Knight on scout, a
       sniper-era title); two profiles sharing a prefix; upgrade while a game

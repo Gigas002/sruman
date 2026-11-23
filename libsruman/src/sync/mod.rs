@@ -36,6 +36,7 @@ const PLATFORM_PREFIX: &str = "com.valvesoftware.SteamRuntime.Platform-";
 /// One downloadable archive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArchiveInfo {
+    /// Archive file name.
     pub file: String,
     /// Lowercase hex, from `SHA256SUMS`.
     pub sha256: String,
@@ -47,6 +48,7 @@ pub struct ArchiveInfo {
 /// One published build of a runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildInfo {
+    /// Archive per architecture.
     pub archives: BTreeMap<Arch, ArchiveInfo>,
     /// `os-release` of the runtime (`PRETTY_NAME`, `VERSION_ID`, …).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -59,6 +61,7 @@ pub struct BuildInfo {
 /// `sync/<name>.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncIndex {
+    /// Runtime name.
     pub runtime: String,
     /// `<base_url>/<server_dir>/images`, so a changed base URL is noticed.
     pub images_url: String,
@@ -66,6 +69,7 @@ pub struct SyncIndex {
     pub update_timestamp: String,
     /// Unix seconds of the last successful refresh.
     pub refreshed_at: u64,
+    /// The build each channel points to.
     #[serde(default)]
     pub channels: BTreeMap<Channel, BuildId>,
     /// Builds some channel points to, plus any added with [`add_build`]
@@ -82,18 +86,25 @@ impl SyncIndex {
     }
 }
 
+/// Errors from refreshing or reading the sync index.
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
+    /// A download failed.
     #[error(transparent)]
     Fetch(#[from] FetchError),
+    /// The server's files can't be used (what's wrong).
     #[error("{0}")]
     Server(String),
+    /// Reading or writing the index failed.
     #[error("{path}: {source}")]
     Io {
+        /// The file it failed on.
         path: PathBuf,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// The runtime isn't in the catalog.
     #[error("unknown runtime `{0}`")]
     UnknownRuntime(String),
 }
@@ -112,10 +123,12 @@ pub struct SyncDir {
 }
 
 impl SyncDir {
+    /// The sync index at `root` (`$XDG_CACHE_HOME/sruman/sync`).
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 
+    /// The index's directory.
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -137,6 +150,7 @@ impl SyncDir {
         toml::from_str(&text).ok()
     }
 
+    /// Writes `index` atomically to `<root>/<runtime>.toml`.
     pub fn save(&self, index: &SyncIndex) -> Result<(), SyncError> {
         let text = toml::to_string(index).map_err(|e| SyncError::Server(e.to_string()))?;
         write_atomic(&self.index_path(&index.runtime), text.as_bytes())
@@ -335,6 +349,7 @@ fn read_channel(
     Ok(None)
 }
 
+/// How [`refresh`] works.
 #[derive(Debug, Clone, Default)]
 pub struct RefreshOptions {
     /// `sync --force`: refetch the channels even when the timestamp is unchanged.
@@ -350,8 +365,10 @@ pub enum RefreshOutcome {
     UpToDate,
     /// Channels re-read; lists the channels whose build changed.
     Updated {
+        /// The channels whose build changed.
         changed: Vec<Channel>,
     },
+    /// Refreshing this runtime failed.
     Failed(SyncError),
 }
 

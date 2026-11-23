@@ -20,6 +20,7 @@ use crate::{
 pub enum Fetched {
     /// The cache already had a verified copy.
     Cached,
+    /// Downloaded and verified now.
     Downloaded,
 }
 

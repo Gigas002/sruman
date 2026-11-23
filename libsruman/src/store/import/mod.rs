@@ -17,28 +17,48 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
+/// Errors from importing a runtime directory or archive.
 #[derive(Debug, thiserror::Error)]
 pub enum ImportError {
+    /// The directory isn't a Steam Linux Runtime.
     #[error(
         "{0} doesn't look like a Steam Linux Runtime: expected `run` and a `*_platform_*` directory, \
          or `scout-on-soldier-entry-point-v2`"
     )]
     NotARuntime(PathBuf),
+    /// Scout's `LD_LIBRARY_PATH` runtime directory on its own.
     #[error(
         "{0} is scout's LD_LIBRARY_PATH runtime on its own: import the `SteamLinuxRuntime` \
          directory around it (`scout`), and use `mode = \"overlay\"` to run without a container"
     )]
     ScoutLdlp(PathBuf),
+    /// The build id can't be found in the directory.
     #[error("{dir}: can't tell the build id: {message}")]
-    NoBuildId { dir: PathBuf, message: String },
+    NoBuildId {
+        /// The directory.
+        dir: PathBuf,
+        /// Why not.
+        message: String,
+    },
+    /// The directory holds another runtime than the one named.
     #[error("{dir} holds `{found}`, not `{expected}`")]
     WrongRuntime {
+        /// The directory.
         dir: PathBuf,
+        /// The runtime it holds.
         found: String,
+        /// The runtime that was named.
         expected: String,
     },
+    /// The directory holds a runtime the catalog doesn't know.
     #[error("{dir} holds `{name}`, which isn't in the runtime catalog")]
-    UnknownRuntime { dir: PathBuf, name: String },
+    UnknownRuntime {
+        /// The directory.
+        dir: PathBuf,
+        /// The runtime it holds.
+        name: String,
+    },
+    /// The runtime store failed.
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -46,15 +66,20 @@ pub enum ImportError {
 /// What a directory holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Detected {
+    /// Runtime name.
     pub name: String,
+    /// Build id.
     pub build: BuildId,
+    /// How the runtime is started.
     pub entry: Entry,
 }
 
 /// Copy into the store, or link in place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportMode {
+    /// Copy the directory into the store.
     Copy,
+    /// Register the directory in place (`import --link`).
     Link,
 }
 

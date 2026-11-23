@@ -15,8 +15,10 @@ mod tests;
 /// Directory name used under every XDG base directory.
 pub const APP_NAME: &str = "sruman";
 
+/// Errors from finding the user's directories.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PathsError {
+    /// `$HOME` is unset or relative.
     #[error("HOME is not set or is not an absolute path")]
     NoHome,
 }
@@ -24,6 +26,7 @@ pub enum PathsError {
 /// XDG base directories, with the spec's fallbacks applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XdgDirs {
+    /// `$HOME`.
     pub home: PathBuf,
     /// `$XDG_CONFIG_HOME`, fallback `~/.config`.
     pub config_home: PathBuf,
@@ -86,6 +89,7 @@ pub struct AppDirs {
 }
 
 impl AppDirs {
+    /// sruman's directories under `xdg`.
     pub fn new(xdg: &XdgDirs) -> Self {
         let config = xdg.config_home.join(APP_NAME);
         let data = xdg.data_home.join(APP_NAME);

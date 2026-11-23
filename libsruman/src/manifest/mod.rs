@@ -9,23 +9,29 @@ use std::{collections::BTreeMap, fmt};
 #[cfg(test)]
 mod tests;
 
+/// A `manifest.dpkg` line that can't be parsed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("manifest line {line}: {message}")]
 pub struct ParseError {
+    /// 1-based line number.
     pub line: usize,
+    /// What's wrong with it.
     pub message: String,
 }
 
 /// One installed package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Package {
+    /// Binary package name.
     pub name: String,
     /// `amd64`, `i386`, or `None` for `Architecture: all` packages.
     pub arch: Option<String>,
+    /// Package version.
     pub version: String,
     /// Source package, when it differs from `name` (with its version in
     /// parentheses when that differs too).
     pub source: Option<String>,
+    /// `Installed-Size`, when given.
     pub installed_size_kib: Option<u64>,
 }
 
@@ -100,10 +106,12 @@ impl Manifest {
         Ok(Self { packages })
     }
 
+    /// Number of packages.
     pub fn len(&self) -> usize {
         self.packages.len()
     }
 
+    /// Whether the manifest lists no packages.
     pub fn is_empty(&self) -> bool {
         self.packages.is_empty()
     }
@@ -158,21 +166,29 @@ impl Manifest {
 /// A package whose version differs between two builds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
+    /// Package name.
     pub name: String,
+    /// Architecture, as in [`Package::arch`].
     pub arch: Option<String>,
+    /// Version in the older build.
     pub old: String,
+    /// Version in the newer build.
     pub new: String,
 }
 
 /// Packages added, removed and changed between two builds.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Diff {
+    /// Packages only in the newer build.
     pub added: Vec<Package>,
+    /// Packages only in the older build.
     pub removed: Vec<Package>,
+    /// Packages in both, with different versions.
     pub changed: Vec<Change>,
 }
 
 impl Diff {
+    /// Whether the builds have the same packages.
     pub fn is_empty(&self) -> bool {
         self.added.is_empty() && self.removed.is_empty() && self.changed.is_empty()
     }
@@ -220,11 +236,20 @@ impl Diff {
     }
 }
 
+/// What happened to a package between two builds, for a [`SummaryLine`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SummaryKind {
+    /// New, with this version.
     Added(String),
+    /// Gone; it had this version.
     Removed(String),
-    Changed { old: String, new: String },
+    /// Updated from `old` to `new`.
+    Changed {
+        /// Version in the older build.
+        old: String,
+        /// Version in the newer build.
+        new: String,
+    },
 }
 
 impl fmt::Display for SummaryKind {
@@ -240,8 +265,11 @@ impl fmt::Display for SummaryKind {
 /// `libsdl3-0 (amd64, i386)  3.4.18 -> 3.4.20`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryLine {
+    /// Package name.
     pub name: String,
+    /// Its architectures, merged into one line.
     pub archs: Vec<String>,
+    /// What happened to it.
     pub kind: SummaryKind,
 }
 
