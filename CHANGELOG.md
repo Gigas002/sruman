@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Security
+
+- Archives can't unpack to more than twice their packages' `Installed-Size`
+  (20 times the archive without a manifest, at least 512 MiB) or a million
+  entries; device nodes stay refused, as before.
+- Redirects from HTTPS to plain HTTP are refused.
+- sruman's directories are created `0700` and its lock files `0600`; a
+  directory owned by someone else, or writable by others, is refused.
+- No `unsafe` code in either crate, no process started through a shell, and
+  no `unwrap`, `expect` or unchecked indexing in the code that parses
+  downloaded data (enforced by lints and a policy test).
+
+### Fixed
+
+- Extracting uses at most two decoder threads: it was as fast, but took
+  about 700 MiB on a 12-core machine instead of 190 MiB.
+- `profiles list` reads `/proc` once instead of once per profile.
+- A download cancelled while extracting is reported as cancelled.
+- `import` no longer prints the path twice in its errors.
+
 ### Changed
 
 - libgameprofiles comes from crates.io (`0.1`) instead of its git master
@@ -20,6 +40,12 @@ All notable changes to this project will be documented in this file.
   without soldier.
 
 ### Added
+
+- `docs/USAGE.md` (command reference, games, profiles, prefixes, exit codes,
+  logs), `examples/config.toml`, and `docs/RUNTIMES.md` sections on
+  channels, apt vs images, importing Steam's and umu's runtimes,
+  troubleshooting and manual release checks. Tests keep the docs, examples
+  and CLI in step.
 
 - The `sruman` binary: runtime commands (`sync`, `install`, `upgrade`,
   `outdated`, `remove`, `search`, `info`, `runtimes`, `builds`, `files`,

@@ -13,7 +13,7 @@ use super::{
 use crate::paths;
 
 /// Keys a `[[game]]` entry may have; anything else gets a warning.
-const KNOWN_KEYS: &[&str] = &["name", "exe", "profile", "args", "cwd", "env.*"];
+pub(crate) const KNOWN_KEYS: &[&str] = &["name", "exe", "profile", "args", "cwd", "env.*"];
 
 /// One `[[game]]` entry in `games.toml`: lootrs' shape without `game_id`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

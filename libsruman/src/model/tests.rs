@@ -480,3 +480,40 @@ fn prefix_may_not_swallow_the_home() {
     profile.prefix = Some("~/prefixes/p".into());
     assert!(validate_profile(&profile, &ctx(&catalog)).is_empty());
 }
+
+/// PLAN 5.5c: `examples/games.toml` shows every key a game takes, and its
+/// commented-out keys load too.
+#[test]
+fn the_example_games_show_every_key() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/games.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let enabled: String = text
+        .lines()
+        .map(|line| match line.strip_prefix("# ") {
+            Some(rest)
+                if rest
+                    .split_once(" = ")
+                    .is_some_and(|(k, _)| !k.contains(' ')) =>
+            {
+                rest
+            }
+            _ => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    for key in game::KNOWN_KEYS {
+        let key = key.trim_end_matches(".*");
+        assert!(
+            enabled
+                .lines()
+                .any(|l| l.trim_start().starts_with(&format!("{key} ="))),
+            "examples/games.toml lacks `{key}`"
+        );
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("games.toml");
+    std::fs::write(&file, &enabled).unwrap();
+    let loaded = load_games(&file);
+    assert!(loaded.issues.is_empty(), "{:#?}", loaded.issues);
+    assert_eq!(loaded.games.len(), 3);
+}
