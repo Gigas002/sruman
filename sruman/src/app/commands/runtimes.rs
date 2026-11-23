@@ -433,8 +433,12 @@ pub fn remove(app: &mut App, targets: &[RuntimeRef], force: bool) -> Result<u8, 
 /// runtimes that run inside it.
 fn users(app: &App, store: &Store, builds: &[Installed]) -> Result<Vec<String>, AppError> {
     let profiles = app.profiles();
+    let steam = super::steam::linked_builds(app);
     let mut problems = Vec::new();
     for build in builds {
+        for (why, _) in steam.iter().filter(|(_, linked)| linked == build) {
+            problems.push(format!("{} {}: {why}", build.name, build.build));
+        }
         let left = store
             .installed_of(&build.name)?
             .into_iter()
@@ -1048,7 +1052,13 @@ pub fn clean(app: &mut App, all: bool) -> Result<u8, AppError> {
     }
     let store = app.store();
     let lock = store.lock()?;
-    let protect = pinned(&app.profiles());
+    let mut protect = pinned(&app.profiles());
+    // Like pinned builds: the ones Steam links to.
+    protect.extend(
+        super::steam::linked_builds(app)
+            .iter()
+            .map(|(_, build)| build.as_ref()),
+    );
     let report = store.clean(
         &lock,
         &CleanPolicy {

@@ -100,6 +100,10 @@ pub struct Dirs {
     pub app: AppDirs,
     /// Where new prefixes go by default.
     pub prefix_root: PathBuf,
+    /// `$XDG_DATA_HOME`, where Steam lives unless `~/.steam/root` says.
+    pub data_home: PathBuf,
+    /// `steam_dir` from `config.toml`, absolute.
+    pub steam_dir: Option<PathBuf>,
 }
 
 /// The channel of each runtime.
@@ -216,6 +220,19 @@ impl Settings {
                 expanded
             }
         };
+        let steam_dir = match file.steam_dir.as_deref() {
+            None => None,
+            Some(path) => {
+                let expanded = paths::expand_tilde(path, &xdg.home);
+                if !expanded.is_absolute() {
+                    return Err(invalid(
+                        "steam_dir",
+                        format!("must be absolute or start with `~`, got {}", path.display()),
+                    ));
+                }
+                Some(expanded)
+            }
+        };
         let catalog = Catalog::builtin()
             .with_overrides(&file.runtime)
             .map_err(|errors| SettingsError::Catalog {
@@ -293,6 +310,8 @@ impl Settings {
                 config_file,
                 app,
                 prefix_root,
+                data_home: xdg.data_home,
+                steam_dir,
             },
         })
     }

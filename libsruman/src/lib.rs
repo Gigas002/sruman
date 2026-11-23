@@ -23,6 +23,7 @@ pub mod paths;
 pub mod prefix;
 pub mod process;
 pub mod progress;
+pub mod steam;
 pub mod store;
 #[cfg(feature = "download")]
 pub mod sync;

@@ -16,7 +16,7 @@ use crate::{
     config::ColorChoice,
     settings::{
         CliOptions,
-        command::{Command as Cmd, Execute, LaunchMode, Profiles, Run},
+        command::{Command as Cmd, Execute, LaunchMode, Profiles, Run, Steam},
     },
 };
 
@@ -280,6 +280,10 @@ pub enum Command {
     /// Manage profiles.
     #[command(subcommand)]
     Profiles(ProfilesCommand),
+    /// Run Steam on sruman's runtimes: replace Steam's own copies with
+    /// links to the same builds.
+    #[command(subcommand)]
+    Steam(SteamCommand),
     /// Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so
     /// umu runs it instead of downloading its own.
     #[command(name = "provide-umu")]
@@ -300,6 +304,30 @@ pub enum Command {
         /// Runtimes to check; all installed ones without arguments.
         #[arg(value_parser = runtime_ref)]
         runtimes: Vec<RuntimeRef>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SteamCommand {
+    /// Steam's runtimes: linked to which build, or Steam's own copy.
+    Status {
+        #[command(flatten)]
+        json: Json,
+    },
+    /// Replace Steam's runtimes with links to the same builds, importing
+    /// Steam's copy of a build sruman doesn't have. Steam must not run.
+    Link {
+        /// Runtimes to link (`steamrt3c` is the client's); all without
+        /// arguments.
+        #[arg(value_parser = runtime_name)]
+        runtimes: Vec<String>,
+    },
+    /// Put copies of the builds back in place of the links. Steam must not
+    /// run.
+    Unlink {
+        /// Runtimes to unlink; all without arguments.
+        #[arg(value_parser = runtime_name)]
+        runtimes: Vec<String>,
     },
 }
 
@@ -385,7 +413,6 @@ fn runtime_ref(text: &str) -> Result<RuntimeRef, String> {
 }
 
 /// A runtime name without a `=build`.
-#[cfg(feature = "download")]
 fn runtime_name(text: &str) -> Result<String, String> {
     let runtime = runtime_ref(text)?;
     if runtime.is_pinned() {
@@ -542,6 +569,11 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
         },
         #[cfg(feature = "diag")]
         Command::Doctor { runtimes } => plain(Cmd::Doctor { runtimes }),
+        Command::Steam(steam) => match steam {
+            SteamCommand::Status { json } => (Cmd::Steam(Steam::Status), json.get()),
+            SteamCommand::Link { runtimes } => plain(Cmd::Steam(Steam::Link { runtimes })),
+            SteamCommand::Unlink { runtimes } => plain(Cmd::Steam(Steam::Unlink { runtimes })),
+        },
         Command::ProvideUmu {
             runtime,
             app_id,

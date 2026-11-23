@@ -241,6 +241,17 @@ impl Catalog {
                 &[],
             ),
             RuntimeDef::builtin(
+                "steamrt3c",
+                "Steam Runtime 3c, the 64-bit Steam client's own runtime (not for games)",
+                "steamrt3c",
+                &[
+                    (X86_64, "steam-runtime-steamrt-amd64.tar.xz"),
+                    (Arm64, "steam-runtime-steamrt-arm64.tar.xz"),
+                ],
+                Entry::Container,
+                &[],
+            ),
+            RuntimeDef::builtin(
                 "steamrt4",
                 "Steam Linux Runtime 4.0, Debian 13 based, 64-bit only",
                 "steamrt4",

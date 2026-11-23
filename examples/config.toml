@@ -6,6 +6,7 @@
 # default_profile = "steamrt4"       # the latest runtime; for `execute` and `shell` without -p, and games without `profile`
 # auto_install = false               # install a missing runtime at launch without asking
 # prefix_root = "~/.local/share/sruman/prefixes"   # where `profiles new` puts prefixes
+# steam_dir = "~/.local/share/Steam"  # Steam for `sruman steam`; without it, ~/.steam/root, then this
 
 # Which build "latest" means: "stable", "beta", or "steam" (what Steam's
 # client uses right now). Per runtime under [channels].

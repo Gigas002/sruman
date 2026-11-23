@@ -9,7 +9,7 @@ fn builtin_matches_valves_server() {
     let catalog = Catalog::builtin();
     assert_eq!(
         catalog.names().collect::<Vec<_>>(),
-        ["scout", "sniper", "soldier", "steamrt4"]
+        ["scout", "sniper", "soldier", "steamrt3c", "steamrt4"]
     );
     let sniper = catalog.get("sniper").unwrap();
     assert_eq!(

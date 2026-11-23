@@ -520,6 +520,13 @@ impl Store {
             || held_by_pressure_vessel(&build.dir.join("var"))
     }
 
+    /// Whether pressure-vessel runs something from the runtime at `dir`
+    /// (its lock in `var/tmp-*/.ref`), whatever the directory is: a build,
+    /// or Steam's own copy of a runtime.
+    pub fn dir_in_use(dir: &Path) -> bool {
+        held_by_pressure_vessel(&dir.join("var"))
+    }
+
     /// The package list shipped inside a container build
     /// (`<suite>_platform_<build>/files/manifest.dpkg`); `None` for builds
     /// without one (scout-ldlp) or when it's unreadable.

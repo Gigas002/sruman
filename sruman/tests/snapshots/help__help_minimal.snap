@@ -26,6 +26,7 @@ Commands:
   logs         Print a game's latest run log
   init         Create or update a profile's prefix
   profiles     Manage profiles
+  steam        Run Steam on sruman's runtimes: replace Steam's own copies with links to the same builds
   provide-umu  Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so umu runs it instead of downloading its own
   help         Print this message or the help of the given subcommand(s)
 
@@ -790,6 +791,124 @@ Options:
       --prefix
           Also delete the prefix, unless it's shared or in use
 
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman steam --help
+Run Steam on sruman's runtimes: replace Steam's own copies with links to the same builds
+
+Usage: sruman steam [OPTIONS] <COMMAND>
+
+Commands:
+  status  Steam's runtimes: linked to which build, or Steam's own copy
+  link    Replace Steam's runtimes with links to the same builds, importing Steam's copy of a build sruman doesn't have. Steam must not run
+  unlink  Put copies of the builds back in place of the links. Steam must not run
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman steam status --help
+Steam's runtimes: linked to which build, or Steam's own copy
+
+Usage: sruman steam status [OPTIONS]
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman steam link --help
+Replace Steam's runtimes with links to the same builds, importing Steam's copy of a build sruman doesn't have. Steam must not run
+
+Usage: sruman steam link [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          Runtimes to link (`steamrt3c` is the client's); all without arguments
+
+Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman steam unlink --help
+Put copies of the builds back in place of the links. Steam must not run
+
+Usage: sruman steam unlink [OPTIONS] [RUNTIMES]...
+
+Arguments:
+  [RUNTIMES]...
+          Runtimes to unlink; all without arguments
+
+Options:
   -y, --yes
           Answer every prompt with its default
 

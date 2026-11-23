@@ -37,6 +37,8 @@ pub struct FileConfig {
     pub auto_install: Option<bool>,
     pub color: Option<ColorChoice>,
     pub prefix_root: Option<PathBuf>,
+    /// Steam's root folder, for `sruman steam`; found by itself without.
+    pub steam_dir: Option<PathBuf>,
     /// SIGTERM → SIGKILL grace period for `stop`.
     pub stop_timeout_secs: Option<u64>,
     /// `[[runtime]]` catalog extensions and overrides (D8).

@@ -130,7 +130,7 @@ fn read(dir: &Path, file: &str) -> Result<String, ImportError> {
 }
 
 /// `depot<TAB><build>` in `VERSIONS.txt`.
-fn depot_build(dir: &Path) -> Result<BuildId, ImportError> {
+pub(crate) fn depot_build(dir: &Path) -> Result<BuildId, ImportError> {
     let text = read(dir, "VERSIONS.txt")?;
     text.lines()
         .find_map(|line| {
@@ -208,7 +208,7 @@ pub fn import(
             }
             let staged = store.staging_dir(lock, &format!("import-{}", found.name))?;
             let tree = staged.join("build");
-            copy_tree(&dir, &tree, true)?;
+            copy_runtime(&dir, &tree)?;
             let meta = BuildMeta::new(
                 &found.name,
                 &found.build,
@@ -220,15 +220,27 @@ pub fn import(
     Ok(installed)
 }
 
-/// Copies a runtime tree: regular files (with permissions), directories and
-/// symlinks (as links). The top-level `var/` (pressure-vessel's scratch
-/// space) is skipped; other file types are refused.
-fn copy_tree(from: &Path, to: &Path, top: bool) -> Result<(), StoreError> {
+/// Copies a runtime tree with [`copy_tree`], leaving out the top-level
+/// `var/` (pressure-vessel's scratch space) and every
+/// `<name>_platform_<build>/` but the newest: Steam keeps old platforms
+/// around after an update, and nothing runs them.
+pub(crate) fn copy_runtime(from: &Path, to: &Path) -> Result<(), StoreError> {
+    let newest = platform_dir(from).map(|(name, build)| format!("{name}_platform_{build}"));
+    copy_tree(from, to, &|name: &str| {
+        name == "var"
+            || (name.contains("_platform_") && newest.as_deref().is_some_and(|keep| keep != name))
+    })
+}
+
+/// Copies regular files (with permissions), directories and symlinks (as
+/// links); other file types are refused. Top-level entries for which
+/// `skip` holds are left out.
+fn copy_tree(from: &Path, to: &Path, skip: &dyn Fn(&str) -> bool) -> Result<(), StoreError> {
     let meta = fs::symlink_metadata(from).map_err(io_err(from))?;
     fs::create_dir(to).map_err(io_err(to))?;
     for entry in fs::read_dir(from).map_err(io_err(from))? {
         let entry = entry.map_err(io_err(from))?;
-        if top && entry.file_name() == "var" {
+        if skip(&entry.file_name().to_string_lossy()) {
             continue;
         }
         let src = entry.path();
@@ -238,7 +250,7 @@ fn copy_tree(from: &Path, to: &Path, top: bool) -> Result<(), StoreError> {
             let target = fs::read_link(&src).map_err(io_err(&src))?;
             symlink(&target, &dst).map_err(io_err(&dst))?;
         } else if kind.is_dir() {
-            copy_tree(&src, &dst, false)?;
+            copy_tree(&src, &dst, &|_| false)?;
         } else if kind.is_file() {
             fs::copy(&src, &dst).map_err(io_err(&dst))?;
         } else {

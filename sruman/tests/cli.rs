@@ -553,6 +553,57 @@ fn provide_umu_builds_the_view() {
     assert!(err.contains("umu has no folder for scout"), "{err}");
 }
 
+#[test]
+fn steam_link_status_and_unlink() {
+    let s = Sruman::new();
+    let (_, err) = expect(&s.run(&["steam", "status"]), 2);
+    assert!(err.contains("set `steam_dir`"), "{err}");
+    let common = s.root().join("data/Steam/steamapps/common");
+    fs::create_dir_all(&common).unwrap();
+    let slot = common.join("SteamLinuxRuntime_4");
+    fs::rename(s.fake_runtime(), &slot).unwrap();
+
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("Steam's copy"), "{out}");
+    let (_, err) = expect(&s.run(&["steam", "link", "steamrt3c"]), 2);
+    assert!(
+        err.contains("Steam has no `steamrt3c`; it has: steamrt4"),
+        "{err}"
+    );
+    let (out, _) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(
+        out,
+        "linked steamrt4 4.0.1 for Steam (imported Steam's copy)\n"
+    );
+    let build = s.root().join("data/sruman/runtimes/steamrt4/4.0.1");
+    assert_eq!(fs::read_link(&slot).unwrap(), build);
+    let (out, _) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(out, "steamrt4 4.0.1: linked already\n");
+    #[cfg(feature = "json")]
+    {
+        let (out, _) = expect(&s.run(&["steam", "status", "--json"]), 0);
+        let rows: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(rows[0]["state"], "linked");
+        assert_eq!(rows[0]["build"], "4.0.1");
+    }
+
+    // remove keeps a build Steam links to.
+    let (_, err) = expect(&s.run(&["remove", "steamrt4"]), 2);
+    assert!(err.contains("Steam links to it"), "{err}");
+
+    let (out, _) = expect(&s.run(&["steam", "unlink"]), 0);
+    assert_eq!(out, "steamrt4: Steam has its own copy again\n");
+    assert!(
+        !fs::symlink_metadata(&slot)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(slot.join("run").is_file() && build.join("run").is_file());
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("Steam's copy"), "{out}");
+}
+
 #[cfg(feature = "download")]
 mod server {
     use super::*;

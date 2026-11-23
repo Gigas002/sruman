@@ -33,6 +33,7 @@ Commands:
   logs         Print a game's latest run log
   init         Create or update a profile's prefix
   profiles     Manage profiles
+  steam        Run Steam on sruman's runtimes: replace Steam's own copies with links to the same builds
   provide-umu  Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so umu runs it instead of downloading its own
   doctor       Check user namespaces, bubblewrap and the runtimes
   help         Print this message or the help of the given subcommand(s)

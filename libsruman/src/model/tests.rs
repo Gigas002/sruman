@@ -176,7 +176,7 @@ fn validation_collects_every_problem() {
             "error: profile `invalid`: `env` key `` is not a valid variable name",
             "error: profile `invalid`: `shader_cache` must be an absolute path (or start with `~`), got `cache`",
             "error: profile `invalid`: `slr.filesystems_rw` must be an absolute path (or start with `~`), got `games`",
-            "error: profile `invalid`: `slr.runtime`: unknown runtime `snipper`; known: scout, sniper, soldier, steamrt4",
+            "error: profile `invalid`: `slr.runtime`: unknown runtime `snipper`; known: scout, sniper, soldier, steamrt3c, steamrt4",
         ]
     );
 }
@@ -221,7 +221,7 @@ fn implicit_profiles_fill_in_for_catalog_runtimes() {
     );
     assert_eq!(
         shadowing.implicit_names(&catalog).collect::<Vec<_>>(),
-        ["scout", "sniper", "steamrt4"]
+        ["scout", "sniper", "steamrt3c", "steamrt4"]
     );
 }
 
