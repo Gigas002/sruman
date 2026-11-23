@@ -1,5 +1,5 @@
 # Two profiles can share one prefix: both games see the same home.
-# Here a sniper and a soldier profile use ~/.local/share/sruman/prefixes/indie.
+# Here a steamrt4 and a soldier profile use ~/.local/share/sruman/prefixes/indie.
 
 name = "shared-prefix-a"
 runner = "slr"
@@ -7,5 +7,5 @@ prefix = "~/.local/share/sruman/prefixes/indie"
 wrappers = ["gamemoderun"]
 
 [slr]
-runtime = "sniper"
+runtime = "steamrt4"
 filesystems_ro = ["~/Music"]               # e.g. a game that plays your music

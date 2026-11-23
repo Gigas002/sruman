@@ -18,19 +18,19 @@ These need the `download` feature (on by default) unless noted.
 | Command | What it does |
 | ------- | ------------ |
 | `sruman sync` | Refresh the sync index: one small request per server directory when nothing changed. `--force` refetches everything. |
-| `sruman install` | Install runtimes with their dependencies: `sruman install sniper`, or a build: `sniper=3.0.20261021.266025`. `--needed` skips installed ones, `--download-only` only fills the cache. |
+| `sruman install` | Install runtimes with their dependencies: `sruman install steamrt4` (the latest; use it unless a game needs an older one), or a build: `steamrt4=4.0.20261021.265997`. `--needed` skips installed ones, `--download-only` only fills the cache. |
 | `sruman upgrade` | Upgrade installed runtimes (all, or the named ones) to their channel's build. `--sync` refreshes the index first, `--allow-downgrade` follows a channel that went back, `--download-only` only downloads. Pinned profiles keep their build. |
 | `sruman outdated` | Installed runtimes with a newer build in the index. |
 | `sruman search` | Search runtimes by name and description; `--packages` searches their Debian packages (`search --packages libvulkan`). |
 | `sruman builds` | List a runtime's builds on the server, for pinning. |
 | `sruman clean` | Remove old builds (keeping `keep_versions` per runtime, the current one, and builds that profiles pin, that are linked or in use) and the cached archives of builds that aren't installed. `--all` removes every cached archive. |
-| `sruman remove` | Remove runtimes (all their builds) or single builds (`sniper=<build>`). It refuses while profiles still use the build; `--force` skips that check, but a build in use by a running game is never removed. Works without `download`. |
+| `sruman remove` | Remove runtimes (all their builds) or single builds (`steamrt4=<build>`). It refuses while profiles still use the build; `--force` skips that check, but a build in use by a running game is never removed. Works without `download`. |
 | `sruman info` | A runtime's build, channel, sizes, dependencies and the profiles using it; `--packages` lists its packages. Works without `download` for installed runtimes. |
 | `sruman runtimes` | Installed runtimes and builds. Works without `download`. |
 | `sruman files` | An installed build's files, from Valve's file list. Works without `download`. |
 | `sruman verify` | Check installed builds (all without arguments) against Valve's file lists: every file, directory and link present, sizes matching; `--full` also checks every file's SHA-256. Works without `download`. |
-| `sruman import` | Install from a local archive (`SteamLinuxRuntime_sniper.tar.xz`, needs `download`) or a runtime directory (Steam's or umu's copy). `--link` registers a directory in place instead of copying it; sruman never deletes a linked build's files. |
-| `sruman provide-umu` | Make a runtime umu's folder (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a view of the build), so umu runs it and never downloads its own: `provide-umu sniper`, or `--appid 1628350` as Proton's `toolmanifest.vdf` names it. lootrs runs this before each umu launch. |
+| `sruman import` | Install from a local archive (`SteamLinuxRuntime_4.tar.xz`, needs `download`) or a runtime directory (Steam's or umu's copy). `--link` registers a directory in place instead of copying it; sruman never deletes a linked build's files. |
+| `sruman provide-umu` | Make a runtime umu's folder (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a view of the build), so umu runs it and never downloads its own: `provide-umu steamrt4`, or `--appid 4183110` as Proton's `toolmanifest.vdf` names it. lootrs runs this before each umu launch. |
 | `sruman doctor` | Check unprivileged user namespaces, bubblewrap and the installed runtimes (needs the `diag` feature, on by default). |
 
 ### Games and profiles
@@ -38,7 +38,7 @@ These need the `download` feature (on by default) unless noted.
 | Command | What it does |
 | ------- | ------------ |
 | `sruman run` | Run a game from `games.toml`: `sruman run hollow-knight -- --extra-arg`. `-p` overrides its profile. |
-| `sruman execute` | Run an executable once with a profile: `sruman execute -p sniper ./game.x86_64`. A target with a `/` or a leading `~` is a path; a bare name is a program in the runtime's `PATH` (`execute -p sniper glxgears`). Without `-p`, `default_profile`. |
+| `sruman execute` | Run an executable once with a profile: `sruman execute -p steamrt4 ./game.x86_64`. A target with a `/` or a leading `~` is a path; a bare name is a program in the runtime's `PATH` (`execute -p steamrt4 glxgears`). Without `-p`, `default_profile`. |
 | `sruman shell` | An interactive shell in a profile's runtime and prefix (pressure-vessel's shell in container mode, `$SHELL` in overlay mode). |
 | `sruman list` | The games in `games.toml`. |
 | `sruman show` | A game's executable, profile, runtime build, prefix and environment, as it would launch. |
@@ -50,7 +50,7 @@ These need the `download` feature (on by default) unless noted.
 | `sruman init` | Create or update a profile's prefix without launching anything. |
 | `sruman profiles list` | Profiles, implicit ones included, with their runtime, mode, prefix and whether they're in use. |
 | `sruman profiles show` | A profile: runtime build, mode, prefix, and which other profiles share the prefix. |
-| `sruman profiles new` | Create a profile for a runtime (`-r`/`--runtime`), then its prefix: `profiles new indie -r sniper [--mode overlay] [--prefix ~/pfx/indie]`. Container profiles get `<prefix_root>/<name>` without `--prefix`; overlay profiles get no prefix. |
+| `sruman profiles new` | Create a profile for a runtime (`-r`/`--runtime`), then its prefix: `profiles new indie -r steamrt4 [--mode overlay] [--prefix ~/pfx/indie]`. Container profiles get `<prefix_root>/<name>` without `--prefix`; overlay profiles get no prefix. |
 | `sruman profiles edit` | Edit a profile in `$VISUAL`/`$EDITOR`, then check it. |
 | `sruman profiles edit-games` | Edit `games.toml` the same way. |
 | `sruman profiles delete` | Delete profiles; `--prefix` deletes their prefixes too, unless another profile shares one or it's in use. |
@@ -111,9 +111,10 @@ the runtime has. A bare name is never a file in the current directory: write
 ## Profiles and prefixes
 
 A profile is a libgameprofiles file with `runner = "slr"` and an `[slr]`
-section naming the runtime (`runtime = "sniper"`, or `"sniper=<build>"` to
-pin a build). Every runtime also has an **implicit profile** of the same
-name, with no prefix, so `sruman execute -p sniper ./game` works without any
+section naming the runtime (`runtime = "steamrt4"`, or `"steamrt4=<build>"`
+to pin a build). Prefer `steamrt4`, the latest runtime; pick `sniper`,
+`soldier` or `scout` only for a game that doesn't run on it. Every runtime also has an **implicit profile** of the same
+name, with no prefix, so `sruman execute -p steamrt4 ./game` works without any
 file.
 
 Two choices are independent:
