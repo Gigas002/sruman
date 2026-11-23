@@ -268,7 +268,12 @@ pub fn show(app: &mut App, name: &str) -> Result<u8, AppError> {
         cwd: None,
         profile: profile_name,
         runtimes: Vec::new(),
-        prefix: None,
+        // The profile's, also when the launch can't be prepared (a runtime
+        // that isn't installed): it's no less the game's prefix.
+        prefix: profile
+            .prefix
+            .as_deref()
+            .map(|p| libsruman::paths::expand_tilde(p, app.home())),
         command: None,
         env: BTreeMap::new(),
         problems: Vec::new(),
@@ -290,7 +295,9 @@ pub fn show(app: &mut App, name: &str) -> Result<u8, AppError> {
                 .iter()
                 .map(|b| (b.name.clone(), b.build.clone()))
                 .collect();
-            show.prefix = plan.prefix.as_ref().map(|p| p.dir.clone());
+            if let Some(prefix) = &plan.prefix {
+                show.prefix = Some(prefix.dir.clone());
+            }
         }
         Err(err) => show.problems.clone_from(&err.problems),
     }

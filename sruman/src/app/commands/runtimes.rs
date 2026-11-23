@@ -802,7 +802,9 @@ fn remote_info(app: &App, target: &RuntimeRef) -> Result<Remote, AppError> {
 
 #[cfg(not(feature = "download"))]
 fn remote_info(_: &App, target: &RuntimeRef) -> Result<Remote, AppError> {
-    Err(AppError::Invalid(format!("`{target}` is not installed")))
+    Err(AppError::Invalid(format!(
+        "`{target}` is not installed; this sruman is built without downloads, so import it with `sruman import <dir>`"
+    )))
 }
 
 // --- runtimes / builds / files ------------------------------------------------
@@ -1162,7 +1164,13 @@ pub fn import(app: &mut App, sources: &[PathBuf], link: bool) -> Result<u8, AppE
             }
             Err(err) => {
                 code = code.max(err.exit_code());
-                app.out.error(format!("{}: {err}", source.display()))?;
+                // Most errors name the path already.
+                let (shown, message) = (source.display().to_string(), err.to_string());
+                if message.starts_with(&shown) {
+                    app.out.error(message)?;
+                } else {
+                    app.out.error(format!("{shown}: {message}"))?;
+                }
             }
         }
     }
@@ -1183,7 +1191,7 @@ fn import_archive(
     archive: &Path,
 ) -> Result<Installed, AppError> {
     use libsruman::{
-        install::extract::extract_tar_xz,
+        install::extract::{Limits, extract_tar_xz},
         store::{BuildMeta, MakeCurrent},
     };
 
@@ -1199,7 +1207,10 @@ fn import_archive(
             libsruman::progress::Phase::Extract,
             Some(size),
         );
-        let result = extract_tar_xz(archive, &tree, &mut bar, &CancelFlag::new());
+        // The build's manifest is inside the archive, so the cap follows
+        // the archive's size.
+        let limits = Limits::for_build(None, size);
+        let result = extract_tar_xz(archive, &tree, limits, &mut bar, &CancelFlag::new());
         libsruman::progress::Progress::end(&mut bar, result.is_ok());
         result.map_err(|e| AppError::Failed(format!("{}: {e}", archive.display())))?;
     }

@@ -29,6 +29,7 @@ mod tests;
 pub struct ValidationContext<'a> {
     /// Used to expand `~` in paths.
     pub home: &'a Path,
+    /// The runtime catalog, to check `[slr] runtime` names.
     pub catalog: &'a Catalog,
 }
 
@@ -59,10 +60,13 @@ pub(crate) fn unknown_keys(value: &toml::Value, known: &[&str], issues: &mut Iss
     walk(value, "", known, issues);
 }
 
+/// Errors from loading or saving profiles.
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
+    /// Reading or writing a profile file failed.
     #[error(transparent)]
     Store(libgameprofiles::store::Error),
+    /// A profile name that isn't allowed (the reason).
     #[error("invalid profile name: {0}")]
     InvalidName(String),
 }

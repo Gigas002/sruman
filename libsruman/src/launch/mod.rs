@@ -51,6 +51,7 @@ mod tests;
 pub const TAG_GAME: &str = "SRUMAN_GAME";
 /// Set on path runs and shells: `<kind>:<profile>:<id>`.
 pub const TAG_SESSION: &str = "SRUMAN_SESSION";
+/// Set on every process of a launch: the profile's name.
 pub const TAG_PROFILE: &str = "SRUMAN_PROFILE";
 /// The absolute prefix path, when the profile has one.
 pub const TAG_PREFIX: &str = "SRUMAN_PREFIX";
@@ -58,6 +59,7 @@ pub const TAG_PREFIX: &str = "SRUMAN_PREFIX";
 /// What to launch.
 #[derive(Debug, Clone, Copy)]
 pub enum Target<'a> {
+    /// A game from `games.toml`.
     Game(&'a Game),
     /// An executable: a path (`~` allowed), or a bare name looked up in the
     /// runtime's `PATH`.
@@ -69,7 +71,9 @@ pub enum Target<'a> {
 /// How the processes are tagged, see [`TAG_GAME`] and [`TAG_SESSION`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tag {
+    /// A game launch: [`TAG_GAME`] is the game's name.
     Game(String),
+    /// A path run or shell: [`TAG_SESSION`] is `<kind>:<profile>:<id>`.
     Session(String),
 }
 
@@ -85,6 +89,7 @@ impl Tag {
 /// Values that come from the caller, not the profile.
 #[derive(Debug, Clone, Copy)]
 pub struct LaunchContext<'a> {
+    /// The user's home, for `~` in paths.
     pub home: &'a Path,
     /// Directories from the host `PATH`, for wrappers.
     pub search_path: &'a [PathBuf],
@@ -92,7 +97,9 @@ pub struct LaunchContext<'a> {
     pub debug: bool,
     /// Appended after the game's own arguments.
     pub extra_args: &'a [String],
+    /// The runtime store the profile's runtime is taken from.
     pub store: &'a Store,
+    /// The runtime catalog (entry points, dependencies).
     pub catalog: &'a Catalog,
     /// The user's `$SHELL`, for [`Target::Shell`] in overlay mode;
     /// containers use pressure-vessel's own shell.
@@ -105,10 +112,13 @@ pub struct LaunchContext<'a> {
 /// A resolved command, ready to spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchSpec {
+    /// The program to execute: the first wrapper, else the runtime's entry point.
     pub program: PathBuf,
+    /// Its arguments.
     pub args: Vec<OsString>,
     /// Set on top of the inherited environment.
     pub env: BTreeMap<String, OsString>,
+    /// Working directory.
     pub cwd: PathBuf,
     /// The game's shader cache directory, which `env` points the drivers
     /// at; created by [`LaunchPlan::acquire`].
@@ -125,6 +135,7 @@ impl LaunchSpec {
 /// Every problem that prevents a launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchError {
+    /// One message per problem.
     pub problems: Vec<String>,
 }
 
@@ -141,9 +152,13 @@ impl std::error::Error for LaunchError {}
 /// front of the wrapped command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeCommand {
+    /// The program to execute.
     pub program: OsString,
+    /// Its arguments.
     pub args: Vec<OsString>,
+    /// Set on top of the inherited environment.
     pub env: BTreeMap<String, OsString>,
+    /// Working directory.
     pub cwd: PathBuf,
 }
 
@@ -155,7 +170,9 @@ pub struct Runtimes {
     /// The container it runs in, for scout in container mode: soldier's
     /// current build.
     pub host: Option<Installed>,
+    /// How the runtime is started.
     pub entry: Entry,
+    /// Container or overlay mode (the profile's `[slr] mode`).
     pub mode: SlrMode,
 }
 
@@ -187,15 +204,20 @@ pub struct LaunchPlan {
 pub struct PrefixPlan {
     /// Absolute.
     pub dir: PathBuf,
+    /// Runtime name, recorded in the prefix's state.
     pub runtime: String,
+    /// Runtime build, recorded in the prefix's state.
     pub build: String,
+    /// The profile that set the prefix up.
     pub profile: String,
+    /// What the prefix's home is.
     pub home: HomeMode,
 }
 
 /// A launch with its locks held.
 #[derive(Debug)]
 pub struct Launch {
+    /// The command to spawn.
     pub spec: LaunchSpec,
     /// Keep these open in the child (clear `CLOEXEC` before exec): the build
     /// holds and the prefix lock.

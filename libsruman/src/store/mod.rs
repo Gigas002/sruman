@@ -40,28 +40,62 @@ const LOCK_FILE: &str = ".lock";
 const STAGING_DIR: &str = ".staging";
 const CURRENT: &str = "current";
 
+/// Errors from the runtime store.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
+    /// A filesystem operation failed.
     #[error("{path}: {source}")]
     Io {
+        /// The file or directory it failed on.
         path: PathBuf,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// Another process holds the store lock (the lock file's path).
     #[error("the runtime store is locked by another sruman process ({0})")]
     Busy(PathBuf),
+    /// No build of the runtime is installed.
     #[error("runtime `{name}` is not installed; install it with `sruman install {name}`")]
-    NotInstalled { name: String },
+    NotInstalled {
+        /// Runtime name.
+        name: String,
+    },
+    /// The runtime is installed, but not this build.
     #[error(
         "runtime `{name}` build {build} is not installed; install it with `sruman install {name}={build}`"
     )]
-    BuildMissing { name: String, build: BuildId },
+    BuildMissing {
+        /// Runtime name.
+        name: String,
+        /// The missing build.
+        build: BuildId,
+    },
+    /// A running game uses the build.
     #[error("{name} {build} is in use by a running game; stop it first")]
-    InUse { name: String, build: BuildId },
+    InUse {
+        /// Runtime name.
+        name: String,
+        /// The build in use.
+        build: BuildId,
+    },
+    /// The build is installed already.
     #[error("{name} {build} is already installed")]
-    AlreadyInstalled { name: String, build: BuildId },
+    AlreadyInstalled {
+        /// Runtime name.
+        name: String,
+        /// The installed build.
+        build: BuildId,
+    },
+    /// A build's `<build_id>.toml` can't be read or written.
     #[error("{path}: bad metadata: {message}")]
-    Meta { path: PathBuf, message: String },
+    Meta {
+        /// The metadata file.
+        path: PathBuf,
+        /// What's wrong with it.
+        message: String,
+    },
+    /// A build's file list (`mtree.txt.gz`) can't be read.
     #[error(transparent)]
     Mtree(#[from] mtree::MtreeError),
 }
@@ -76,11 +110,22 @@ fn io_err(path: impl Into<PathBuf>) -> impl FnOnce(io::Error) -> StoreError {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Source {
     /// Downloaded and checked against the server's `SHA256SUMS`.
-    Download { url: String, sha256: String },
+    Download {
+        /// The archive's URL.
+        url: String,
+        /// The archive's SHA-256, as hex.
+        sha256: String,
+    },
     /// Copied from a directory (`import <dir>`).
-    Import { from: PathBuf },
+    Import {
+        /// The directory it was copied from.
+        from: PathBuf,
+    },
     /// Registered in place (`import <dir> --link`); never deleted by sruman.
-    Link { target: PathBuf },
+    Link {
+        /// The directory the build is.
+        target: PathBuf,
+    },
 }
 
 /// `<build_id>.toml`.
@@ -88,14 +133,18 @@ pub enum Source {
 pub struct BuildMeta {
     /// sruman version that installed it.
     pub sruman: String,
+    /// Runtime name.
     pub runtime: String,
+    /// Build id.
     pub build: BuildId,
     /// Unix seconds.
     pub installed_at: u64,
+    /// Where the build came from.
     pub source: Source,
 }
 
 impl BuildMeta {
+    /// Metadata for a build installed now by this version of sruman.
     pub fn new(runtime: &str, build: &BuildId, source: Source) -> Self {
         Self {
             sruman: crate::VERSION.to_owned(),
@@ -112,16 +161,21 @@ impl BuildMeta {
 /// One installed build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Installed {
+    /// Runtime name.
     pub name: String,
+    /// Build id.
     pub build: BuildId,
     /// `<root>/<name>/<build_id>`; a symlink for linked builds.
     pub dir: PathBuf,
     /// `None` when the metadata file is missing or unreadable.
     pub meta: Option<BuildMeta>,
+    /// Whether `current` points at this build.
     pub is_current: bool,
 }
 
 impl Installed {
+    /// Whether the build was registered in place (`import --link`), so sruman
+    /// never deletes its files.
     pub fn is_linked(&self) -> bool {
         matches!(
             self.meta,
@@ -157,10 +211,13 @@ pub struct BuildHold {
 }
 
 impl BuildHold {
+    /// The lock file's descriptor, to pass to a child process.
     pub fn fd(&self) -> BorrowedFd<'_> {
         self.file.as_fd()
     }
 
+    /// Gives up the hold object but keeps the lock: the descriptor holds it
+    /// until it's closed.
     pub fn into_fd(self) -> OwnedFd {
         self.file.into()
     }
@@ -178,13 +235,18 @@ pub struct CleanPolicy {
 /// Why [`Store::clean`] kept a build it would otherwise remove.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeptBecause {
+    /// A running game uses it.
     InUse,
+    /// It was registered in place (`import --link`).
     Linked,
 }
 
+/// What [`Store::clean`] did.
 #[derive(Debug, Default)]
 pub struct CleanReport {
+    /// Builds that were deleted.
     pub removed: Vec<Installed>,
+    /// Builds that would have been deleted, and why they weren't.
     pub kept: Vec<(Installed, KeptBecause)>,
 }
 
@@ -193,6 +255,7 @@ pub struct CleanReport {
 pub enum MakeCurrent {
     /// When there is no current build, or the new one is newer.
     IfNewer,
+    /// Always, even when the new build is older (installing an exact build).
     Always,
 }
 
@@ -208,6 +271,7 @@ impl Store {
         Self { root: root.into() }
     }
 
+    /// The store's root directory.
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -215,14 +279,8 @@ impl Store {
     /// Takes the store lock without waiting (pacman's `db.lck`) and wipes
     /// leftovers of interrupted operations.
     pub fn lock(&self) -> Result<StoreLock, StoreError> {
-        fs::create_dir_all(&self.root).map_err(io_err(&self.root))?;
         let path = self.root.join(LOCK_FILE);
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-            .map_err(io_err(&path))?;
+        let file = crate::paths::lock_file(&path).map_err(io_err(&path))?;
         match file.try_lock() {
             Ok(()) => {}
             Err(fs::TryLockError::WouldBlock) => return Err(StoreError::Busy(path)),

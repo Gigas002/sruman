@@ -4,6 +4,9 @@
 //! The library never parses CLI arguments, initializes logging or reads
 //! configuration files on its own; callers pass resolved values in.
 
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
 pub mod catalog;
 #[cfg(feature = "diag")]
 pub mod diag;

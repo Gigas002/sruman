@@ -1,0 +1,146 @@
+---
+source: sruman/tests/cli.rs
+expression: shown
+---
+$ sruman runtimes --json
+[
+  {
+    "build": "4.0.1",
+    "current": true,
+    "dir": "<tmp>/data/sruman/runtimes/steamrt4/4.0.1",
+    "linked": false,
+    "name": "steamrt4",
+    "source": {
+      "from": "<tmp>/SteamLinuxRuntime_4",
+      "kind": "import"
+    }
+  }
+]
+$ sruman info steamrt4 --json
+[
+  {
+    "build": "4.0.1",
+    "channel": "stable",
+    "current": true,
+    "depends": [],
+    "description": "Steam Linux Runtime 4.0, Debian 13 based, 64-bit only",
+    "dir": "<tmp>/data/sruman/runtimes/steamrt4/4.0.1",
+    "download_size": null,
+    "in_use": "<live>",
+    "installed": true,
+    "installed_at": "<live>",
+    "name": "steamrt4",
+    "os": null,
+    "package_count": null,
+    "required_by": [
+      "profile box"
+    ],
+    "source": {
+      "from": "<tmp>/SteamLinuxRuntime_4",
+      "kind": "import"
+    }
+  }
+]
+$ sruman list --json
+[
+  {
+    "name": "cli-json",
+    "profile": "box",
+    "running": "<live>",
+    "runtime": "steamrt4"
+  }
+]
+$ sruman show cli-json --json
+{
+  "args": [
+    "--from-games"
+  ],
+  "command": "<tmp>/data/sruman/runtimes/steamrt4/4.0.1/run -- <tmp>/home/Games/game.sh --from-games",
+  "cwd": "<tmp>/home/Games",
+  "env": {
+    "PRESSURE_VESSEL_FILESYSTEMS_RW": "<tmp>/home/Games",
+    "PRESSURE_VESSEL_HOME": "<tmp>/home/pfx/home",
+    "PRESSURE_VESSEL_VARIABLE_DIR": "<tmp>/data/sruman/runtimes/steamrt4/4.0.1/var",
+    "SRUMAN_GAME": "cli-json",
+    "SRUMAN_PREFIX": "<tmp>/home/pfx",
+    "SRUMAN_PROFILE": "box"
+  },
+  "exe": "<tmp>/home/Games/game.sh",
+  "latest_log": null,
+  "name": "cli-json",
+  "prefix": "<tmp>/home/pfx",
+  "problems": [],
+  "profile": "box",
+  "running": "<live>",
+  "runtimes": [
+    [
+      "steamrt4",
+      "4.0.1"
+    ]
+  ]
+}
+$ sruman profiles list --json
+[
+  {
+    "implicit": false,
+    "in_use": "<live>",
+    "mode": "container",
+    "name": "box",
+    "prefix": "<tmp>/home/pfx",
+    "runtime": "steamrt4"
+  },
+  {
+    "implicit": true,
+    "in_use": "<live>",
+    "mode": "container",
+    "name": "scout",
+    "prefix": null,
+    "runtime": "scout"
+  },
+  {
+    "implicit": true,
+    "in_use": "<live>",
+    "mode": "container",
+    "name": "sniper",
+    "prefix": null,
+    "runtime": "sniper"
+  },
+  {
+    "implicit": true,
+    "in_use": "<live>",
+    "mode": "container",
+    "name": "soldier",
+    "prefix": null,
+    "runtime": "soldier"
+  },
+  {
+    "implicit": true,
+    "in_use": "<live>",
+    "mode": "container",
+    "name": "steamrt4",
+    "prefix": null,
+    "runtime": "steamrt4"
+  }
+]
+$ sruman profiles show box --json
+{
+  "build": "4.0.1",
+  "file": "<tmp>/config/sruman/profiles/box.toml",
+  "in_use": "<live>",
+  "mode": "container",
+  "name": "box",
+  "prefix": "<tmp>/home/pfx",
+  "prefix_state": {
+    "runtimes": {
+      "steamrt4": {
+        "build": "4.0.1",
+        "home": "container",
+        "profile": "box"
+      }
+    },
+    "sruman": "0.1.0"
+  },
+  "runtime": "steamrt4",
+  "shared_with": [],
+  "wrappers": []
+}

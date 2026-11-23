@@ -5,7 +5,6 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 license = "GPL-3.0-or-later"
-homepage = "https://github.com/Gigas002/sruman"
 description = "Steam Linux Runtime manager: install and update runtimes, run native games in them through profiles and prefixes"
 keywords = ["steam", "runtime", "linux", "games", "pressure-vessel"]
 repository = "https://github.com/Gigas002/sruman"
@@ -34,6 +33,10 @@ serde_json = "1"
 # SHA-256 for `verify --full` (mtree digests) and archive checks
 sha2 = "0.11"
 tempfile = "3"
+# Property tests (PLAN 5.5): parsers on arbitrary input, ordering laws. Dev-only.
+proptest = "1"
+# Snapshot tests of help, summaries and errors (PLAN 5.5c). Dev-only.
+insta = "1"
 thiserror = "2"
 toml = "1"
 # App log (sruman): a daily file plus stderr with -v, as in lootrs.

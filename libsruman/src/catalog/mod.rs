@@ -14,25 +14,38 @@ mod tests;
 /// Valve's image server.
 pub const DEFAULT_BASE_URL: &str = "https://repo.steampowered.com";
 
+/// Errors from building or querying the runtime catalog.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CatalogError {
+    /// A runtime name the catalog doesn't know.
     #[error("unknown runtime `{name}`{}", required_by.as_ref().map(|by| format!(" (required by `{by}`)")).unwrap_or_default())]
     Unknown {
+        /// The unknown name.
         name: String,
+        /// The runtime that depends on it, when it came up as a dependency.
         required_by: Option<String>,
     },
+    /// Runtimes that depend on each other in a loop, in dependency order.
     #[error("runtime dependency cycle: {}", .0.join(" -> "))]
     Cycle(Vec<String>),
+    /// A `[[runtime]]` entry from `config.toml` that can't be used.
     #[error("[[runtime]] `{name}`: {message}")]
-    InvalidOverride { name: String, message: String },
+    InvalidOverride {
+        /// The entry's runtime name.
+        name: String,
+        /// What's wrong with it.
+        message: String,
+    },
 }
 
 /// CPU architecture of an archive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Arch {
+    /// 64-bit x86 (`amd64` in Debian's terms).
     #[serde(rename = "x86_64")]
     X86_64,
+    /// 64-bit ARM.
     Arm64,
 }
 
@@ -49,6 +62,7 @@ impl Arch {
         }
     }
 
+    /// The name Valve's archives and `config.toml` use: `x86_64` or `arm64`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::X86_64 => "x86_64",
@@ -89,6 +103,7 @@ impl Entry {
 pub struct RuntimeDef {
     /// The name users type: `sniper`.
     pub name: String,
+    /// One-line description for `search` and `info`.
     pub description: String,
     /// Server root, without a trailing `/`.
     pub base_url: String,
@@ -97,6 +112,7 @@ pub struct RuntimeDef {
     pub server_dir: String,
     /// Archive file name per architecture.
     pub archives: BTreeMap<Arch, String>,
+    /// How the runtime is started: its entry point and layout.
     pub entry: Entry,
     /// Runtimes that must be installed first.
     pub depends: Vec<String>,
@@ -143,6 +159,7 @@ impl RuntimeDef {
         format!("{}/{}/images", self.base_url, self.server_dir)
     }
 
+    /// The archive file name for `arch`, if Valve publishes one.
     pub fn archive(&self, arch: Arch) -> Option<&str> {
         self.archives.get(&arch).map(String::as_str)
     }
@@ -162,17 +179,24 @@ impl RuntimeDef {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeOverride {
+    /// The runtime to override or add.
     pub name: String,
+    /// Replaces the description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Replaces the server root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
+    /// Replaces the directory under the server root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_dir: Option<String>,
+    /// Replaces the archive file name per architecture.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archives: Option<BTreeMap<Arch, String>>,
+    /// Replaces the entry point.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<Entry>,
+    /// Replaces the runtimes that must be installed first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depends: Option<Vec<String>>,
     /// `{ stable = ["latest-public-stable"], ... }`
@@ -329,11 +353,11 @@ impl Catalog {
         }
     }
 
+    /// The runtime called `name`.
     pub fn get(&self, name: &str) -> Option<&RuntimeDef> {
         self.runtimes.get(name)
     }
 
-    /// All runtimes, by name.
     /// The runtime with Steam app id `app_id` (`require_tool_appid`).
     pub fn by_app_id(&self, app_id: u32) -> Option<&RuntimeDef> {
         self.runtimes
@@ -341,10 +365,12 @@ impl Catalog {
             .find(|def| def.app_id == Some(app_id))
     }
 
+    /// All runtimes, by name.
     pub fn iter(&self) -> impl Iterator<Item = &RuntimeDef> {
         self.runtimes.values()
     }
 
+    /// All runtime names, sorted.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.runtimes.keys().map(String::as_str)
     }

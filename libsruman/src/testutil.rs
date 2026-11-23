@@ -128,6 +128,10 @@ pub(crate) enum TarEntry<'a> {
     Symlink(&'a str, &'a str),
     Hardlink(&'a str, &'a str),
     Fifo(&'a str),
+    CharDevice(&'a str),
+    BlockDevice(&'a str),
+    /// A regular file whose header claims `size` bytes, with no data.
+    SizeOnly(&'a str, u64),
 }
 
 /// A tar stream with raw headers (no path validation).
@@ -141,13 +145,19 @@ pub(crate) fn tar(entries: &[TarEntry]) -> Vec<u8> {
             TarEntry::Symlink(p, l) => (p, tar::EntryType::Symlink, b"", 0o777, l),
             TarEntry::Hardlink(p, l) => (p, tar::EntryType::Link, b"", 0o644, l),
             TarEntry::Fifo(p) => (p, tar::EntryType::Fifo, b"", 0o644, ""),
+            TarEntry::CharDevice(p) => (p, tar::EntryType::Char, b"", 0o666, ""),
+            TarEntry::BlockDevice(p) => (p, tar::EntryType::Block, b"", 0o660, ""),
+            TarEntry::SizeOnly(p, _) => (p, tar::EntryType::Regular, b"", 0o644, ""),
         };
         let old = header.as_old_mut();
         old.name[..path.len()].copy_from_slice(path.as_bytes());
         old.linkname[..link.len()].copy_from_slice(link.as_bytes());
         header.set_entry_type(kind);
         header.set_mode(mode);
-        header.set_size(data.len() as u64);
+        header.set_size(match entry {
+            TarEntry::SizeOnly(_, size) => *size,
+            _ => data.len() as u64,
+        });
         header.set_mtime(1_700_000_000);
         header.set_cksum();
         out.extend_from_slice(header.as_bytes());

@@ -1,0 +1,86 @@
+---
+source: sruman/tests/cli.rs
+expression: shown
+---
+$ sruman  -> 2
+Steam Linux Runtime manager: install and update runtimes, run native games in them through profiles and prefixes
+
+Usage: sruman [OPTIONS] <COMMAND>
+
+Commands:
+  remove       Remove runtimes
+  info         Show a runtime: build, channel, sizes, dependencies, users
+  runtimes     List installed runtimes
+  files        List an installed build's files
+  verify       Check installed builds against their file lists (all without arguments)
+  import       Install from local archives or directories
+  run          Run a game from games.toml
+  execute      Run an executable once with a profile
+  shell        Open a shell in a profile's runtime and prefix
+  status       Show running games and sessions
+  stop         Stop games, profiles' sessions or processes
+  killall      Stop everything sruman started
+  list         List games
+  show         Show a game: executable, profile, runtime, prefix, environment
+  check        Check games and profiles without launching (all without arguments)
+  logs         Print a game's latest run log
+  init         Create or update a profile's prefix
+  profiles     Manage profiles
+  provide-umu  Make a runtime umu's folder under `$XDG_DATA_HOME/sruman/umu/`, so umu runs it instead of downloading its own
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -y, --yes            Answer every prompt with its default
+      --color <WHEN>   Colorize the output [possible values: auto, always, never]
+  -q, --quiet          Less output (`runtimes`: names only)
+  -v, --verbose...     Log to stderr (-vv: more)
+      --config <FILE>  Use this config.toml
+  -h, --help           Print help
+  -V, --version        Print version
+$ sruman frobnicate -> 2
+error: unrecognized subcommand 'frobnicate'
+
+Usage: sruman [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+$ sruman -S sniper -> 2
+error: unexpected argument '-S' found
+
+Usage: sruman [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+$ sruman remove sniper=not-a-build -> 2
+error: invalid value 'sniper=not-a-build' for '<RUNTIMES>...': `not-a-build` is not a build id: expected dot-separated numbers like `3.0.20261021.266025`
+
+For more information, try '--help'.
+$ sruman run ./path -> 2
+error: invalid value './path' for '<GAME>': name `./path` contains `/`; use only letters, digits, `.`, `_` and `-`
+
+For more information, try '--help'.
+$ sruman runtimes --wait -> 2
+error: unexpected argument '--wait' found
+
+Usage: sruman runtimes [OPTIONS]
+
+For more information, try '--help'.
+$ sruman stop -> 2
+error: the following required arguments were not provided:
+  <TARGETS>...
+
+Usage: sruman stop <TARGETS>...
+
+For more information, try '--help'.
+$ sruman shell -> 2
+error: shell needs a profile: -p <profile>, or default_profile in config.toml
+$ sruman run nothing -> 2
+error: no game named `nothing` in <tmp>/config/sruman/games.toml
+$ sruman stop nothing -> 3
+error: `nothing` is not running
+$ sruman logs nothing -> 3
+error: no run logs for `nothing` yet
+$ sruman import /nonexistent -> 1
+error: /nonexistent: No such file or directory (os error 2)
+$ sruman import /nonexistent -> 4
+error: the runtime store is locked by another sruman process (<tmp>/data/sruman/runtimes/.lock)
+$ sruman runtimes -> 2
+error: <tmp>/config/sruman/config.toml: `log_keep`: must be at least 1

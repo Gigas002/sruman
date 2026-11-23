@@ -6,6 +6,11 @@
 //! `<path> key=value... [flag...]`, with paths octal-escaped (`\040` for a
 //! space, `\176` for `~`).
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     collections::BTreeSet,
     fs,
@@ -18,26 +23,38 @@ use sha2::{Digest, Sha256};
 #[cfg(test)]
 mod tests;
 
+/// Errors from reading a build's file list.
 #[derive(Debug, thiserror::Error)]
 pub enum MtreeError {
+    /// Reading the file failed.
     #[error("{path}: {source}")]
     Io {
+        /// The file list.
         path: PathBuf,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// A line that can't be parsed.
     #[error("{path} line {line}: {message}")]
     Parse {
+        /// The file list.
         path: PathBuf,
+        /// 1-based line number.
         line: usize,
+        /// What's wrong with it.
         message: String,
     },
 }
 
+/// What an entry is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
+    /// A regular file.
     File,
+    /// A directory.
     Dir,
+    /// A symbolic link.
     Link,
 }
 
@@ -46,7 +63,9 @@ pub enum Kind {
 pub struct Entry {
     /// Relative path, unescaped, without the leading `./` (`.` for the root).
     pub path: PathBuf,
+    /// What the entry is.
     pub kind: Kind,
+    /// Size in bytes, for regular files.
     pub size: Option<u64>,
     /// Lowercase hex.
     pub sha256: Option<String>,
@@ -157,8 +176,8 @@ fn unescape(text: &str) -> Result<String, String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
+    while let Some(&byte) = bytes.get(i) {
+        if byte == b'\\' {
             let digits = bytes
                 .get(i + 1..i + 4)
                 .filter(|d| d.iter().all(|b| (b'0'..=b'7').contains(b)));
@@ -177,7 +196,7 @@ fn unescape(text: &str) -> Result<String, String> {
             }
             return Err(format!("bad escape in `{text}`"));
         }
-        out.push(bytes[i]);
+        out.push(byte);
         i += 1;
     }
     String::from_utf8(out).map_err(|_| format!("`{text}` is not UTF-8"))
@@ -209,23 +228,38 @@ pub enum Depth {
     Content,
 }
 
+/// A file that doesn't match the file list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
+    /// Not there.
     Missing(PathBuf),
+    /// There, but a different kind (a directory instead of a file, ...).
     WrongType(PathBuf),
+    /// A regular file of another size.
     WrongSize {
+        /// The file.
         path: PathBuf,
+        /// Size in the file list.
         expected: u64,
+        /// Size on disk.
         found: u64,
     },
+    /// A symlink pointing elsewhere.
     WrongLink {
+        /// The link.
         path: PathBuf,
+        /// Target in the file list.
         expected: PathBuf,
+        /// Target on disk.
         found: PathBuf,
     },
+    /// A regular file whose SHA-256 differs (`verify --full`).
     WrongHash(PathBuf),
+    /// A file that can't be read.
     Unreadable {
+        /// The file.
         path: PathBuf,
+        /// The error.
         message: String,
     },
 }
@@ -264,6 +298,7 @@ impl std::fmt::Display for Problem {
 pub struct Report {
     /// Entries checked.
     pub checked: usize,
+    /// Files that don't match.
     pub problems: Vec<Problem>,
 }
 
@@ -362,7 +397,11 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
+        hasher.update(
+            buf.get(..n).ok_or_else(|| {
+                io::Error::other("read returned more bytes than the buffer holds")
+            })?,
+        );
     }
     Ok(hex(&hasher.finalize()))
 }

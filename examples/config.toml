@@ -1,0 +1,34 @@
+# ~/.config/sruman/config.toml
+# Every key is optional; the values shown are the defaults. Unknown keys are
+# an error, so a typo never silently does nothing. `--config <file>` reads
+# another file.
+
+# default_profile = "sniper"         # for `execute` and `shell` without -p, and games without `profile`
+# auto_install = false               # install a missing runtime at launch without asking
+# prefix_root = "~/.local/share/sruman/prefixes"   # where `profiles new` puts prefixes
+
+# Which build "latest" means: "stable", "beta", or "steam" (what Steam's
+# client uses right now). Per runtime under [channels].
+# channel = "stable"
+# keep_versions = 2                  # builds per runtime that `clean` keeps (current and pinned ones always stay)
+# stop_timeout_secs = 5              # `stop`: SIGTERM, then SIGKILL after this long
+
+# color = "auto"                     # "auto", "always" or "never" (`--color`)
+# log_level = "info"                 # app log: "error", "warn", "info", "debug" or "trace"
+# log_keep = 10                      # daily app logs and run logs per game kept (at least 1)
+
+# [channels]
+# sniper = "beta"
+
+# Change a built-in runtime, or add one (a new one needs `server_dir`,
+# `archives` and `entry`). `base_url` must be https://, except for a mirror on
+# localhost.
+# [[runtime]]
+# name = "sniper"
+# description = "Steam Linux Runtime 3.0 (sniper), from a local mirror"
+# base_url = "http://localhost:8080"
+# server_dir = "steamrt3"
+# archives = { x86_64 = "SteamLinuxRuntime_sniper.tar.xz" }
+# entry = "container"                # or "scout-on-soldier"
+# depends = []
+# pointers = { stable = ["latest-public-stable"], beta = ["latest-public-beta"] }

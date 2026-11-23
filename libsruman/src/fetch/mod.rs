@@ -11,6 +11,11 @@
 //! No request carries anything about the user: the User-Agent is
 //! `sruman/<version>` and there are no cookies or credentials.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::io::{self, Read};
 
 #[cfg(feature = "ureq")]
@@ -45,6 +50,7 @@ pub struct Body {
     pub start: u64,
     /// The whole file's size, if known.
     pub total: Option<u64>,
+    /// The body, from the requested offset.
     pub reader: Box<dyn Read + Send>,
 }
 
@@ -57,19 +63,47 @@ impl std::fmt::Debug for Body {
     }
 }
 
+/// Errors from fetching a URL.
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
+    /// The server answered with a status other than success.
     #[error("{url}: HTTP {status}")]
-    Status { url: String, status: u16 },
+    Status {
+        /// The URL.
+        url: String,
+        /// The HTTP status.
+        status: u16,
+    },
+    /// The request couldn't be made or the connection failed.
     #[error("{url}: {message}")]
-    Transport { url: String, message: String },
+    Transport {
+        /// The URL.
+        url: String,
+        /// What went wrong.
+        message: String,
+    },
+    /// The body is larger than the caller's limit.
     #[error("{url}: larger than {limit} bytes")]
-    TooLarge { url: String, limit: u64 },
+    TooLarge {
+        /// The URL.
+        url: String,
+        /// The limit, in bytes.
+        limit: u64,
+    },
+    /// The server's answer can't be used (a bad `Content-Range`, ...).
     #[error("{url}: bad response: {message}")]
-    BadResponse { url: String, message: String },
+    BadResponse {
+        /// The URL.
+        url: String,
+        /// What's wrong with it.
+        message: String,
+    },
+    /// Reading the body failed.
     #[error("{url}: {source}")]
     Io {
+        /// The URL.
         url: String,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
@@ -91,6 +125,7 @@ impl FetchError {
 /// Plain HTTP(S) reads. Implementations follow redirects, and must return
 /// [`FetchError::Status`] for any non-success status.
 pub trait Fetch: Send + Sync {
+    /// `Content-Length` and `Last-Modified` of `url`, from a `HEAD` request.
     fn head(&self, url: &str) -> Result<Head, FetchError>;
 
     /// Streams `url` from byte `offset` (a `Range: bytes=<offset>-` request

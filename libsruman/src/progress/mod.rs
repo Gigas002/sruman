@@ -19,13 +19,18 @@ mod tests;
 /// The stage an item is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
+    /// Fetching the archive.
     Download,
+    /// Checking its SHA-256.
     Verify,
+    /// Unpacking it into `.staging/`.
     Extract,
+    /// Moving the build into place.
     Commit,
 }
 
 impl Phase {
+    /// Lowercase name, for progress lines and `--json`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Download => "downloading",
@@ -71,18 +76,22 @@ pub struct CancelFlag(Arc<AtomicBool>);
 pub struct Cancelled;
 
 impl CancelFlag {
+    /// A flag that isn't set.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Asks the operation to stop.
     pub fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
     }
 
+    /// Whether [`CancelFlag::cancel`] was called.
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
     }
 
+    /// `Err(Cancelled)` once [`CancelFlag::cancel`] was called.
     pub fn check(&self) -> Result<(), Cancelled> {
         if self.is_cancelled() {
             Err(Cancelled)
@@ -109,6 +118,7 @@ pub struct ProgressReader<'a, R> {
 }
 
 impl<'a, R: Read> ProgressReader<'a, R> {
+    /// Reports reads from `inner` to `progress`, failing them once `cancel` is set.
     pub fn new(inner: R, progress: &'a mut dyn Progress, cancel: &'a CancelFlag) -> Self {
         Self {
             inner,

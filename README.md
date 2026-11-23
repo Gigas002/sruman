@@ -14,6 +14,11 @@ sruman execute -p scout ./game.x86_64 # native game in a Steam Linux Runtime "pr
 > are still to come. The design is in
 > [`docs/PLAN.md`](docs/PLAN.md).
 
+Documentation: [`docs/USAGE.md`](docs/USAGE.md) (commands, games, profiles,
+prefixes) and [`docs/RUNTIMES.md`](docs/RUNTIMES.md) (where runtimes come
+from, how they're checked, troubleshooting). Examples are in
+[`examples/`](examples/).
+
 ## What it does
 
 - **Runtimes as packages.** Installs, upgrades, pins, verifies and removes

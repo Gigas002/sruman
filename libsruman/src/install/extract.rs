@@ -28,20 +28,39 @@ use tar::EntryType;
 
 use crate::progress::{CancelFlag, Cancelled, Progress};
 
+/// Errors from unpacking a runtime archive.
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
+    /// The archive unpacks to more than [`Limits`] allow.
+    #[error("the archive unpacks to more than {limit}; it can't be a runtime build")]
+    TooLarge {
+        /// The limit that was hit, for the message: `4096 MiB` or `1000000 entries`.
+        limit: String,
+    },
+    /// An entry sruman won't unpack (a path escaping the root, a device node, ...).
     #[error("archive entry `{path}`: {reason}")]
-    Refused { path: String, reason: String },
+    Refused {
+        /// The entry's path in the archive.
+        path: String,
+        /// Why it was refused.
+        reason: String,
+    },
+    /// Entries under two different top-level directories (the first two seen).
     #[error("the archive has no single top-level directory (`{0}` and `{1}`)")]
     TopLevel(String, String),
+    /// The archive has no entries.
     #[error("the archive is empty")]
     Empty,
+    /// A filesystem operation failed.
     #[error("{context}: {source}")]
     Io {
+        /// What sruman was doing.
         context: String,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// The operation was cancelled.
     #[error(transparent)]
     Cancelled(#[from] Cancelled),
 }
@@ -89,18 +108,55 @@ impl<R: Seek> Seek for Counting<R> {
     }
 }
 
-/// Decoder threads: enough to keep up with the disk, bounded so a big
-/// machine doesn't spend memory on idle workers.
+/// Decoder threads. Each holds a whole xz block, compressed and unpacked
+/// (Valve's blocks unpack to 24 MiB), so memory grows about 70 MiB per
+/// worker; past two, the single tar consumer is the bottleneck and more
+/// workers only cost memory (docs/AUDIT.md: 2 workers 0.85 s / 183 MiB on
+/// an 800 MiB build, 12 workers 1.06 s / 647 MiB, streaming 2.9 s / 19 MiB).
 fn workers() -> u32 {
-    std::thread::available_parallelism().map_or(1, |n| n.get().min(16) as u32)
+    std::thread::available_parallelism().map_or(1, |n| n.get().min(2) as u32)
+}
+
+/// Bounds on what an archive may unpack to, so a hostile or broken archive
+/// can't fill the disk or its inodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Total bytes of regular files.
+    pub bytes: u64,
+    /// Number of entries.
+    pub entries: u64,
+}
+
+impl Limits {
+    /// At least this many bytes are always allowed.
+    pub const MIN_BYTES: u64 = 512 << 20;
+    /// Entries allowed (Valve's builds have a few tens of thousands).
+    pub const ENTRIES: u64 = 1_000_000;
+
+    /// Twice the packages' `Installed-Size` when the manifest is known
+    /// (unpacked builds come out smaller: documentation is stripped), else
+    /// 20 times the compressed archive (Valve's archives unpack to 3-5
+    /// times their size); never below [`Limits::MIN_BYTES`].
+    pub fn for_build(installed_size_kib: Option<u64>, archive_bytes: u64) -> Self {
+        let bytes = installed_size_kib.map_or_else(
+            || archive_bytes.saturating_mul(20),
+            |kib| kib.saturating_mul(1024).saturating_mul(2),
+        );
+        Self {
+            bytes: bytes.max(Self::MIN_BYTES),
+            entries: Self::ENTRIES,
+        }
+    }
 }
 
 /// Extracts the `.tar.xz` at `archive` into the empty directory `dest`,
 /// stripping the single top-level directory. Progress counts compressed
-/// bytes (`total` = the archive's size). Returns the top-level name.
+/// bytes (`total` = the archive's size). Unpacking stops with
+/// [`ExtractError::TooLarge`] past `limits`. Returns the top-level name.
 pub fn extract_tar_xz(
     archive: &Path,
     dest: &Path,
+    limits: Limits,
     progress: &mut dyn Progress,
     cancel: &CancelFlag,
 ) -> Result<String, ExtractError> {
@@ -122,7 +178,15 @@ pub fn extract_tar_xz(
             reported = now;
         }
     };
-    let top = extract_tar(xz, dest, cancel, &mut || tick(progress))?;
+    let top = extract_tar(xz, dest, limits, cancel, &mut || tick(progress)).map_err(|err| {
+        // The decoder threads may surface a cancelled read as some other
+        // error (a short stream, a wrapped error): the flag decides.
+        if cancel.is_cancelled() {
+            ExtractError::Cancelled(Cancelled)
+        } else {
+            err
+        }
+    })?;
     // The index and footer at the end were read first and never counted.
     let size = fs::metadata(archive).map_or(0, |m| m.len());
     read.fetch_max(size, Ordering::Relaxed);
@@ -135,6 +199,7 @@ pub fn extract_tar_xz(
 pub fn extract_tar(
     reader: impl Read,
     dest: &Path,
+    limits: Limits,
     cancel: &CancelFlag,
     on_entry: &mut dyn FnMut(),
 ) -> Result<String, ExtractError> {
@@ -143,9 +208,24 @@ pub fn extract_tar(
     let mut links: HashSet<PathBuf> = HashSet::new();
     let mut dir_modes: Vec<(PathBuf, u32)> = Vec::new();
     let entries = archive.entries().map_err(io_err("reading the archive"))?;
+    let (mut bytes, mut count) = (0u64, 0u64);
     for entry in entries {
         cancel.check()?;
         let mut entry = entry.map_err(io_err("reading the archive"))?;
+        count += 1;
+        if count > limits.entries {
+            return Err(ExtractError::TooLarge {
+                limit: format!("{} entries", limits.entries),
+            });
+        }
+        // The entry's data is exactly this long (PAX size included), so
+        // checking before writing bounds what lands on disk.
+        bytes = bytes.saturating_add(entry.size());
+        if bytes > limits.bytes {
+            return Err(ExtractError::TooLarge {
+                limit: format!("{} MiB", limits.bytes >> 20),
+            });
+        }
         let raw = entry.path_bytes().into_owned();
         let shown = String::from_utf8_lossy(&raw).into_owned();
         let refuse = |reason: &str| ExtractError::Refused {

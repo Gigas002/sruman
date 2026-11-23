@@ -122,3 +122,37 @@ fn expand_tilde_forms() {
     );
     assert_eq!(expand_tilde(Path::new("rel"), home), Path::new("rel"));
 }
+
+#[test]
+fn private_dirs_and_lock_files() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    let tmp = tempfile::tempdir().unwrap();
+
+    let dir = tmp.path().join("a/b");
+    private_dir(&dir).unwrap();
+    assert_eq!(mode(&dir), 0o700);
+    assert_eq!(mode(&tmp.path().join("a")), 0o700);
+    // Again: an existing private dir is fine.
+    private_dir(&dir).unwrap();
+
+    let lock = dir.join("x.lock");
+    lock_file(&lock).unwrap();
+    assert_eq!(mode(&lock), 0o600);
+
+    // Writable by others: refused, and left alone.
+    let open = tmp.path().join("open");
+    std::fs::create_dir(&open).unwrap();
+    std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let err = lock_file(&open.join("x.lock")).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(err.to_string().contains("chmod go-w"), "{err}");
+    assert!(!open.join("x.lock").exists());
+
+    // Someone else's directory (root's) is refused.
+    if rustix::process::geteuid().as_raw() != 0 {
+        let err = private_dir(Path::new("/")).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(err.to_string().contains("not to you"), "{err}");
+    }
+}

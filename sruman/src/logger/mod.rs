@@ -50,7 +50,7 @@ pub fn init(logging: &Logging) -> Result<WorkerGuard, LoggerError> {
 pub fn subscriber(
     logging: &Logging,
 ) -> Result<(impl Subscriber + Send + Sync + use<>, WorkerGuard), LoggerError> {
-    std::fs::create_dir_all(&logging.dir).map_err(LoggerError::CreateDir)?;
+    libsruman::paths::private_dir(&logging.dir).map_err(LoggerError::CreateDir)?;
     let appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix(FILE_PREFIX)

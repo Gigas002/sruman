@@ -15,7 +15,7 @@
 
 use std::{
     collections::BTreeMap,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io,
     os::fd::{AsFd, BorrowedFd, OwnedFd},
     path::{Path, PathBuf},
@@ -53,7 +53,9 @@ pub enum HomeMode {
 pub struct LastUse {
     /// The runtime build the game ran on.
     pub build: String,
+    /// The profile it ran with.
     pub profile: String,
+    /// What the prefix's home was.
     pub home: HomeMode,
 }
 
@@ -71,9 +73,13 @@ pub struct PrefixState {
 /// One launch's use of a prefix, for [`ensure`].
 #[derive(Debug, Clone, Copy)]
 pub struct PrefixUse<'a> {
+    /// Runtime name.
     pub runtime: &'a str,
+    /// Runtime build.
     pub build: &'a str,
+    /// The profile launching.
     pub profile: &'a str,
+    /// What the prefix's home is.
     pub home: HomeMode,
 }
 
@@ -106,6 +112,8 @@ impl PrefixLock {
         self.file.as_fd()
     }
 
+    /// Gives up the guard object but keeps the lock: the descriptor holds it
+    /// until it's closed.
     pub fn into_fd(self) -> OwnedFd {
         self.file.into()
     }
@@ -124,20 +132,28 @@ pub struct Prepared {
     pub state: PrefixState,
 }
 
+/// Errors from setting up or deleting a prefix.
 #[derive(Debug, thiserror::Error)]
 pub enum PrefixError {
+    /// A filesystem operation failed.
     #[error("{context}: {source}")]
     Io {
+        /// What sruman was doing.
         context: String,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// A running game uses the prefix.
     #[error("prefix {} is in use; stop the games running in it first", .0.display())]
     Busy(PathBuf),
+    /// The prefix path is relative.
     #[error("prefix {} must be an absolute path", .0.display())]
     Relative(PathBuf),
+    /// The prefix is the home directory or contains it.
     #[error("prefix {} is or contains your home directory; pick a directory of its own", .0.display())]
     ContainsHome(PathBuf),
+    /// The directory has no prefix state file, so sruman doesn't delete it.
     #[error("{} is not a sruman prefix (no {STATE_FILE}); not deleting it", .0.display())]
     NotAPrefix(PathBuf),
 }
@@ -172,13 +188,7 @@ pub fn lock_path(lock_dir: &Path, prefix: &Path) -> PathBuf {
 pub fn lock(lock_dir: &Path, prefix: &Path, exclusive: bool) -> Result<PrefixLock, PrefixError> {
     let path = lock_path(lock_dir, prefix);
     let context = || format!("locking {}", path.display());
-    fs::create_dir_all(lock_dir).map_err(io_err(context()))?;
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&path)
-        .map_err(io_err(context()))?;
+    let file = crate::paths::lock_file(&path).map_err(io_err(context()))?;
     let result = if exclusive {
         file.try_lock()
     } else {

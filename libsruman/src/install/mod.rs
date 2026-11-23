@@ -7,6 +7,11 @@
 //! transaction with earlier items installed, as pacman does. Dependencies
 //! come first, so a failure never leaves a runtime without what it needs.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     collections::BTreeMap,
     fs, io,
@@ -32,44 +37,81 @@ pub use extract::ExtractError;
 #[cfg(test)]
 mod tests;
 
+/// Errors from resolving or running an install or upgrade.
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
+    /// The catalog can't resolve a runtime or its dependencies.
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    /// The runtime isn't in the sync index.
     #[error("`{0}` isn't in the sync index; run `sruman sync` first")]
     NotSynced(String),
+    /// The runtime's channel points at no build.
     #[error("`{name}` has no {channel} build on the server")]
-    NoChannelBuild { name: String, channel: Channel },
+    NoChannelBuild {
+        /// Runtime name.
+        name: String,
+        /// The channel it follows.
+        channel: Channel,
+    },
+    /// The build has no archive for this architecture.
     #[error("{name} {build} has no {arch} archive")]
     NoArchive {
+        /// Runtime name.
         name: String,
+        /// Build id.
         build: BuildId,
+        /// Architecture name.
         arch: &'static str,
     },
+    /// This machine's architecture isn't one Valve builds runtimes for.
     #[error("this machine's architecture has no Steam Linux Runtime")]
     UnsupportedArch,
+    /// Reading the sync index failed.
     #[error(transparent)]
     Sync(#[from] SyncError),
+    /// A download failed.
     #[error(transparent)]
     Fetch(#[from] FetchError),
+    /// An archive's SHA-256 doesn't match `SHA256SUMS`.
     #[error("{url}: checksum mismatch (expected {expected}, got {actual})")]
     Checksum {
+        /// The archive's URL.
         url: String,
+        /// The SHA-256 from `SHA256SUMS`.
         expected: String,
+        /// The SHA-256 of the downloaded file.
         actual: String,
     },
+    /// Unpacking an archive failed.
     #[error(transparent)]
-    Extract(#[from] ExtractError),
+    Extract(ExtractError),
+    /// The runtime store failed.
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// A filesystem operation failed.
     #[error("{context}: {source}")]
     Io {
+        /// What sruman was doing.
         context: String,
+        /// The underlying error.
         #[source]
         source: io::Error,
     },
+    /// The operation was cancelled through its [`CancelFlag`].
     #[error("cancelled")]
     Cancelled,
+}
+
+/// A cancelled extraction is [`InstallError::Cancelled`], like a cancelled
+/// download.
+impl From<ExtractError> for InstallError {
+    fn from(err: ExtractError) -> Self {
+        match err {
+            ExtractError::Cancelled(_) => Self::Cancelled,
+            err => Self::Extract(err),
+        }
+    }
 }
 
 impl From<crate::progress::Cancelled> for InstallError {
@@ -78,6 +120,7 @@ impl From<crate::progress::Cancelled> for InstallError {
     }
 }
 
+/// Why a build is in a transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     /// Named on the command line.
@@ -89,13 +132,21 @@ pub enum Reason {
 /// One build to install.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxItem {
+    /// Runtime name.
     pub name: String,
+    /// Build to install.
     pub build: BuildId,
+    /// Why it's installed.
     pub reason: Reason,
+    /// Its archive: file name, size and SHA-256.
     pub archive: ArchiveInfo,
+    /// The archive's URL.
     pub url: String,
     /// The runtime's `current` build before the transaction.
     pub current: Option<BuildId>,
+    /// Total `Installed-Size` of the build's packages, when its manifest was
+    /// synced; bounds what extracting the archive may write.
+    pub installed_size_kib: Option<u64>,
     /// `Always` for an `upgrade --allow-downgrade` downgrade; `IfNewer` otherwise.
     pub make_current: MakeCurrent,
 }
@@ -115,6 +166,7 @@ impl TxItem {
     }
 }
 
+/// Why a runtime was left out of a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
     /// That exact build is installed. (Builds never change, so there is
@@ -128,21 +180,27 @@ pub enum SkipReason {
     NotSynced,
 }
 
+/// A runtime left out of a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
+    /// Runtime name.
     pub name: String,
+    /// The build it would have been, when known.
     pub build: Option<BuildId>,
+    /// Why it was left out.
     pub reason: SkipReason,
 }
 
+/// How a transaction picks builds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxOptions {
     /// The channel of runtimes not in `channels`.
     pub channel: Channel,
     /// Per-runtime channels (`[channels] sniper = "beta"`).
     pub channels: BTreeMap<String, Channel>,
+    /// The architecture to install for.
     pub arch: Arch,
-    /// `-w`: download and verify into the cache, install nothing.
+    /// `--download-only`: download and verify into the cache, install nothing.
     pub download_only: bool,
 }
 
@@ -172,6 +230,7 @@ pub struct Transaction {
     /// `upgrade` where the channel's build is installed already: only
     /// `current` moves. Applied before `items`.
     pub switches: Vec<Switch>,
+    /// Runtimes left out, and why.
     pub skipped: Vec<Skipped>,
     download_only: bool,
 }
@@ -179,8 +238,11 @@ pub struct Transaction {
 /// Point a runtime's `current` at an installed build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Switch {
+    /// Runtime name.
     pub name: String,
+    /// The build `current` pointed at.
     pub from: Option<BuildId>,
+    /// The build it points at now.
     pub to: BuildId,
 }
 
@@ -189,12 +251,14 @@ pub struct Switch {
 pub enum Upgrade {
     /// Every installed runtime.
     All,
+    /// The runtimes named on the command line.
     Named(Vec<String>),
 }
 
+/// How `upgrade` resolves builds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct UpgradeOptions {
-    /// `-uu`: also go back when the channel points to an older build.
+    /// `--allow-downgrade`: also go back when the channel points to an older build.
     pub allow_downgrade: bool,
 }
 
@@ -214,17 +278,20 @@ pub struct TxSummary {
 /// How a commit went.
 #[derive(Debug, Default)]
 pub struct CommitReport {
+    /// Builds installed.
     pub installed: Vec<Installed>,
     /// `current` links moved by [`Transaction::switches`].
     pub switched: Vec<Switch>,
-    /// With `-w`: archives now verified in the cache.
+    /// With `--download-only`: archives now verified in the cache.
     pub downloaded: Vec<PathBuf>,
     /// The item that failed, and why; later items weren't attempted.
     pub failed: Option<(String, InstallError)>,
+    /// Items after the failed one.
     pub not_attempted: Vec<String>,
 }
 
 impl CommitReport {
+    /// Whether every item went through.
     pub fn ok(&self) -> bool {
         self.failed.is_none()
     }
@@ -361,9 +428,14 @@ impl Transaction {
                     arch: options.arch.as_str(),
                 })?;
         let url = format!("{}/{build}/{}", sync::images_url(def), archive.file);
+        let installed_size_kib = sync_dir
+            .manifest(&def.name, &build)
+            .map(|manifest| manifest.installed_size_kib())
+            .filter(|&kib| kib > 0);
         self.items.push(TxItem {
             name: def.name.clone(),
             current: store.current(&def.name),
+            installed_size_kib,
             build,
             reason,
             archive,
@@ -373,6 +445,7 @@ impl Transaction {
         Ok(())
     }
 
+    /// Whether there's nothing to install or switch.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty() && self.switches.is_empty()
     }
@@ -537,7 +610,13 @@ impl Transaction {
                 Ok(Done::Downloaded(path)) => report.downloaded.push(path),
                 Err(e) => {
                     report.failed = Some((item.label(), e));
-                    report.not_attempted = self.items[i + 1..].iter().map(TxItem::label).collect();
+                    report.not_attempted = self
+                        .items
+                        .get(i + 1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(TxItem::label)
+                        .collect();
                     break;
                 }
             }
@@ -575,7 +654,8 @@ impl Transaction {
         let staged = store.staging_dir(lock, &format!("{}-{}", item.name, item.build))?;
         let size = fs::metadata(&archive).ok().map(|m| m.len());
         progress.phase(Phase::Extract, size);
-        let extracted = extract::extract_tar_xz(&archive, &staged, progress, cancel)
+        let limits = extract::Limits::for_build(item.installed_size_kib, size.unwrap_or(0));
+        let extracted = extract::extract_tar_xz(&archive, &staged, limits, progress, cancel)
             .map_err(InstallError::from)
             .and_then(|_| {
                 // pressure-vessel keeps its runtime copies in `var/`, which

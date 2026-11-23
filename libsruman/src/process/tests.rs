@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests start fake runtimes and helper processes"
+)]
+
 use std::{
     os::unix::process::CommandExt,
     process::{Child, Command},

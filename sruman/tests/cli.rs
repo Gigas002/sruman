@@ -4,6 +4,11 @@
 //! its argv and env, and `install`/`upgrade --sync` against libsruman's
 //! fixture image server.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests start fake runtimes and helper processes"
+)]
+
 #[cfg(feature = "download")]
 #[path = "../../libsruman/tests/support/http.rs"]
 mod http;
@@ -149,13 +154,26 @@ fn wait_for(mut done: impl FnMut() -> bool) -> bool {
     false
 }
 
+/// Every exit code (0 ok, 1 failed, 2 invalid, 3 not running, 4 busy), and
+/// a snapshot of what each failure prints (PLAN 5.5c): every error should
+/// name a fix.
 #[test]
 fn parse_matrix_exit_codes() {
     let s = Sruman::new();
-    let (_, help) = expect(&s.run(&[]), 2);
+    let root = s.root().display().to_string();
+    let mut shown = String::new();
+    let mut case = |args: &[&str], code: i32| -> String {
+        let (_, err) = expect(&s.run(args), code);
+        shown.push_str(&format!(
+            "$ sruman {} -> {code}\n{}\n",
+            args.join(" "),
+            err.replace(&root, "<tmp>").trim_end()
+        ));
+        err
+    };
+
+    let help = case(&[], 2);
     assert!(help.contains("Usage: sruman [OPTIONS] <COMMAND>"), "{help}");
-    let (version, _) = expect(&s.run(&["--version"]), 0);
-    assert!(version.starts_with("sruman "), "{version}");
     for args in [
         &["frobnicate"][..],
         &["-S", "sniper"],
@@ -164,21 +182,48 @@ fn parse_matrix_exit_codes() {
         &["runtimes", "--wait"],
         &["stop"],
     ] {
-        expect(&s.run(args), 2);
+        case(args, 2);
     }
     // Valid to clap, but no profile to run with.
-    let (_, err) = expect(&s.run(&["shell"]), 2);
+    let err = case(&["shell"], 2);
     assert!(err.contains("default_profile"), "{err}");
-    let (_, err) = expect(&s.run(&["run", "nothing"]), 2);
+    let err = case(&["run", "nothing"], 2);
     assert!(err.contains("no game named `nothing`"), "{err}");
-    let (_, err) = expect(&s.run(&["stop", "nothing"]), 3);
+    let err = case(&["stop", "nothing"], 3);
     assert!(err.contains("`nothing` is not running"), "{err}");
-    let (_, err) = expect(&s.run(&["logs", "nothing"]), 3);
+    let err = case(&["logs", "nothing"], 3);
     assert!(err.contains("no run logs"), "{err}");
+    let err = case(&["import", "/nonexistent"], 1);
+    assert!(err.contains("/nonexistent: No such file"), "{err}");
+    // The store is locked by someone else.
+    {
+        let store = libsruman::store::Store::open(s.root().join("data/sruman/runtimes"));
+        let _lock = store.lock().unwrap();
+        let err = case(&["import", "/nonexistent"], 4);
+        assert!(err.contains("busy") || err.contains("lock"), "{err}");
+    }
     // A broken config is exit 2 before any command runs.
     s.write_config("config.toml", "log_keep = 0\n");
-    let (_, err) = expect(&s.run(&["runtimes"]), 2);
+    let err = case(&["runtimes"], 2);
     assert!(err.contains("`log_keep`"), "{err}");
+    drop(case);
+
+    let (version, _) = expect(&s.run(&["--version"]), 0);
+    assert!(version.starts_with("sruman "), "{version}");
+    // The command list in the help differs with the features.
+    if cfg!(all(
+        feature = "download",
+        feature = "json",
+        feature = "diag"
+    )) {
+        insta::assert_snapshot!("errors_full", shown);
+    } else if cfg!(not(any(
+        feature = "download",
+        feature = "json",
+        feature = "diag"
+    ))) {
+        insta::assert_snapshot!("errors_minimal", shown);
+    }
 }
 
 #[test]
@@ -210,6 +255,15 @@ fn check_on_the_examples() {
     }
     let (list, _) = expect(&s.run(&["list"]), 0);
     assert!(list.contains("hollow-knight"), "{list}");
+    // A profile's prefix shows even when its runtime isn't installed.
+    let games = fs::read_to_string(s.config().join("games.toml")).unwrap();
+    s.write_config(
+        "games.toml",
+        &format!("{games}\n[[game]]\nname = \"indie\"\nexe = \"/bin/true\"\nprofile = \"shared-prefix-a\"\n"),
+    );
+    let (show, err) = expect(&s.run(&["show", "indie"]), 0);
+    assert!(show.contains("sruman/prefixes/indie"), "{show}");
+    assert!(err.contains("is not installed"), "{err}");
     let (profiles, _) = expect(&s.run(&["profiles", "list"]), 0);
     assert!(profiles.contains("shared-prefix-a"), "{profiles}");
 }
@@ -243,6 +297,72 @@ fn container_world(game: &str) -> (Sruman, PathBuf) {
         ),
     );
     (s, exe)
+}
+
+/// Masks what changes from run to run: times, and live state that other
+/// tests running at the same time can affect (their games show up in
+/// `/proc`, and one of them uses a profile called `box` too).
+#[cfg(feature = "json")]
+fn stable(value: &mut serde_json::Value, root: &str) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if ["installed_at", "in_use", "running"].contains(&key.as_str()) {
+                    *v = Value::String("<live>".into());
+                } else {
+                    stable(v, root);
+                }
+            }
+        }
+        Value::Array(items) => {
+            // Sessions of other tests' worlds.
+            items.retain(|item| {
+                item.get("prefix")
+                    .and_then(Value::as_str)
+                    .is_none_or(|p| p.starts_with(root) || item.get("pid").is_none())
+            });
+            for item in items {
+                stable(item, root);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The `--json` output of every command that doesn't need the network, as
+/// snapshots (PLAN 5.5c): a schema change shows up as a diff. Temporary
+/// paths are masked.
+#[cfg(feature = "json")]
+#[test]
+fn json_schemas() {
+    let (s, _) = container_world("cli-json");
+    let root = s.root().display().to_string();
+    let mut shown = String::new();
+    for args in [
+        &["runtimes", "--json"][..],
+        &["info", "steamrt4", "--json"],
+        &["list", "--json"],
+        &["show", "cli-json", "--json"],
+        &["profiles", "list", "--json"],
+        &["profiles", "show", "box", "--json"],
+    ] {
+        let (out, _) = expect(&s.run(args), 0);
+        let mut value: serde_json::Value = serde_json::from_str(&out).expect(&out);
+        stable(&mut value, &root);
+        let text = serde_json::to_string_pretty(&value).unwrap();
+        shown.push_str(&format!(
+            "$ sruman {}\n{}\n",
+            args.join(" "),
+            text.replace(&root, "<tmp>")
+        ));
+    }
+    // `status` lists every sruman session on the machine, other tests'
+    // included, so only its form is checked.
+    let (out, _) = expect(&s.run(&["status", "--json"]), 0);
+    let status: serde_json::Value = serde_json::from_str(&out).expect(&out);
+    assert!(status.is_array(), "{out}");
+    insta::assert_snapshot!("json", shown);
 }
 
 #[test]
