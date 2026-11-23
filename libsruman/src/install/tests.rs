@@ -11,11 +11,39 @@ use crate::{
 // ---- extraction -------------------------------------------------------
 
 fn extract(entries: &[TarEntry]) -> (tempfile::TempDir, Result<String, ExtractError>) {
+    extract_limited(entries, UNLIMITED)
+}
+
+const UNLIMITED: extract::Limits = extract::Limits {
+    bytes: u64::MAX,
+    entries: u64::MAX,
+};
+
+fn extract_limited(
+    entries: &[TarEntry],
+    limits: extract::Limits,
+) -> (tempfile::TempDir, Result<String, ExtractError>) {
+    extract_raw(&tar(entries), limits)
+}
+
+fn extract_raw(
+    archive: &[u8],
+    limits: extract::Limits,
+) -> (tempfile::TempDir, Result<String, ExtractError>) {
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("dest");
     fs::create_dir(&dest).unwrap();
-    let result = extract::extract_tar(&tar(entries)[..], &dest, &CancelFlag::new(), &mut || {});
+    let result = extract::extract_tar(archive, &dest, limits, &CancelFlag::new(), &mut || {});
     (tmp, result)
+}
+
+/// Nothing but `dest` in the temp dir: an extraction wrote nothing outside.
+fn only_dest(tmp: &tempfile::TempDir) -> bool {
+    let names: Vec<_> = fs::read_dir(tmp.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    names == ["dest"]
 }
 
 fn mode(path: &Path) -> u32 {
@@ -132,6 +160,160 @@ fn refuses_everything_valve_never_ships() {
 }
 
 #[test]
+fn device_nodes_are_refused() {
+    use TarEntry::*;
+    for (name, entry) in [
+        ("char", CharDevice("t/null")),
+        ("block", BlockDevice("t/sda")),
+    ] {
+        let (tmp, result) = extract(&[Dir("t/"), entry]);
+        assert!(
+            matches!(result, Err(ExtractError::Refused { .. })),
+            "{name} device: {result:?}"
+        );
+        assert!(only_dest(&tmp), "{name} device wrote outside");
+    }
+}
+
+#[test]
+fn setuid_setgid_and_sticky_bits_are_dropped() {
+    use TarEntry::*;
+    let (tmp, result) = extract(&[
+        Dir("t/"),
+        File("t/suid", b"x", 0o4755),
+        File("t/sgid", b"x", 0o2755),
+        File("t/sticky", b"x", 0o1644),
+    ]);
+    result.unwrap();
+    let dest = tmp.path().join("dest");
+    assert_eq!(mode(&dest.join("suid")), 0o755);
+    assert_eq!(mode(&dest.join("sgid")), 0o755);
+    assert_eq!(mode(&dest.join("sticky")), 0o644);
+}
+
+#[test]
+fn long_names_extract_and_are_checked_like_short_ones() {
+    // A 250-byte name, as GNU tar writes it (a `././@LongLink` record).
+    let long = format!("t/{}/{}", "d".repeat(120), "f".repeat(120));
+    let mut builder = ::tar::Builder::new(Vec::new());
+    let mut dir = ::tar::Header::new_gnu();
+    dir.set_entry_type(::tar::EntryType::Directory);
+    dir.set_mode(0o755);
+    dir.set_size(0);
+    builder.append_data(&mut dir, "t/", &[][..]).unwrap();
+    let mut file = ::tar::Header::new_gnu();
+    file.set_mode(0o644);
+    file.set_size(2);
+    builder.append_data(&mut file, &long, &b"ok"[..]).unwrap();
+    let (tmp, result) = extract_raw(&builder.into_inner().unwrap(), UNLIMITED);
+    result.unwrap();
+    let rel = long.strip_prefix("t/").unwrap();
+    assert_eq!(fs::read(tmp.path().join("dest").join(rel)).unwrap(), b"ok");
+
+    // The same record carrying `..`: the long name goes through the same
+    // path check. (`append_data` refuses `..`, so the record is hand-made.)
+    let evil = format!("t/{}/../../../evil", "d".repeat(120));
+    let mut out = Vec::new();
+    let mut link = ::tar::Header::new_gnu();
+    link.as_gnu_mut().unwrap().name[..13].copy_from_slice(b"././@LongLink");
+    link.set_entry_type(::tar::EntryType::GNULongName);
+    link.set_mode(0o644);
+    link.set_size(evil.len() as u64 + 1);
+    link.set_cksum();
+    out.extend_from_slice(link.as_bytes());
+    out.extend_from_slice(evil.as_bytes());
+    out.push(0);
+    out.resize(out.len().div_ceil(512) * 512, 0);
+    let mut file = ::tar::Header::new_gnu();
+    file.as_gnu_mut().unwrap().name[..5].copy_from_slice(b"t/x_y");
+    file.set_entry_type(::tar::EntryType::Regular);
+    file.set_mode(0o644);
+    file.set_size(1);
+    file.set_cksum();
+    out.extend_from_slice(file.as_bytes());
+    out.push(b'x');
+    out.resize(out.len().div_ceil(512) * 512 + 1024, 0);
+    let mut archive = tar(&[TarEntry::Dir("t/")]);
+    archive.truncate(archive.len() - 1024);
+    archive.extend_from_slice(&out);
+    let (tmp, result) = extract_raw(&archive, UNLIMITED);
+    match result {
+        Err(ExtractError::Refused { path, .. }) => assert_eq!(path, evil),
+        other => panic!("{other:?}"),
+    }
+    assert!(only_dest(&tmp));
+}
+
+#[test]
+fn an_archive_past_its_limits_is_refused() {
+    use TarEntry::*;
+    let small = extract::Limits {
+        bytes: 10,
+        entries: 100,
+    };
+    // Bytes: the third file goes over.
+    let (tmp, result) = extract_limited(
+        &[
+            Dir("t/"),
+            File("t/a", b"1234", 0o644),
+            File("t/b", b"1234", 0o644),
+            File("t/c", b"1234", 0o644),
+        ],
+        small,
+    );
+    assert!(
+        matches!(result, Err(ExtractError::TooLarge { .. })),
+        "{result:?}"
+    );
+    assert!(
+        !tmp.path().join("dest/c").exists(),
+        "the file over the limit was written"
+    );
+    assert!(only_dest(&tmp));
+
+    // A header claiming a huge file is refused before any data is read.
+    let (tmp, result) = extract_limited(
+        &[Dir("t/"), SizeOnly("t/bomb", 1 << 40)],
+        extract::Limits::for_build(Some(1024), 0),
+    );
+    assert!(
+        matches!(result, Err(ExtractError::TooLarge { .. })),
+        "{result:?}"
+    );
+    assert!(!tmp.path().join("dest/bomb").exists());
+
+    // Entries: many empty directories.
+    let names: Vec<String> = (0..5).map(|i| format!("t/d{i}/")).collect();
+    let mut entries = vec![Dir("t/")];
+    entries.extend(names.iter().map(|n| Dir(n)));
+    let (_tmp, result) = extract_limited(
+        &entries,
+        extract::Limits {
+            bytes: u64::MAX,
+            entries: 3,
+        },
+    );
+    assert!(
+        matches!(result, Err(ExtractError::TooLarge { .. })),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn limits_follow_the_manifest_else_the_archive() {
+    use extract::Limits;
+    // Twice the installed size.
+    assert_eq!(Limits::for_build(Some(1 << 20), 0).bytes, 2 << 30);
+    // Twenty times the archive.
+    assert_eq!(Limits::for_build(None, 100 << 20).bytes, 2000 << 20);
+    // Never below the floor, and no overflow.
+    assert_eq!(Limits::for_build(Some(1), 0).bytes, Limits::MIN_BYTES);
+    assert_eq!(Limits::for_build(None, 0).bytes, Limits::MIN_BYTES);
+    assert_eq!(Limits::for_build(Some(u64::MAX), 0).bytes, u64::MAX);
+    assert_eq!(Limits::for_build(None, u64::MAX).bytes, u64::MAX);
+}
+
+#[test]
 fn symlink_rule() {
     for (rel, link, ok) in [
         ("l", "x", true),
@@ -190,7 +372,14 @@ fn tar_xz_reports_compressed_bytes_and_cancels() {
     let dest = tmp.path().join("dest");
     fs::create_dir(&dest).unwrap();
     let mut progress = Bytes::default();
-    extract::extract_tar_xz(&archive, &dest, &mut progress, &CancelFlag::new()).unwrap();
+    extract::extract_tar_xz(
+        &archive,
+        &dest,
+        UNLIMITED,
+        &mut progress,
+        &CancelFlag::new(),
+    )
+    .unwrap();
     assert_eq!(progress.done, fs::metadata(&archive).unwrap().len());
     assert_eq!(fs::read(dest.join("big")).unwrap(), big);
 
@@ -198,12 +387,20 @@ fn tar_xz_reports_compressed_bytes_and_cancels() {
     cancel.cancel();
     let dest2 = tmp.path().join("dest2");
     fs::create_dir(&dest2).unwrap();
-    let err = extract::extract_tar_xz(&archive, &dest2, &mut NoProgress, &cancel).unwrap_err();
+    let err =
+        extract::extract_tar_xz(&archive, &dest2, UNLIMITED, &mut NoProgress, &cancel).unwrap_err();
     assert!(matches!(err, ExtractError::Cancelled(_)), "{err}");
 
     fs::write(&archive, b"not xz").unwrap();
     assert!(
-        extract::extract_tar_xz(&archive, &dest2, &mut NoProgress, &CancelFlag::new()).is_err()
+        extract::extract_tar_xz(
+            &archive,
+            &dest2,
+            UNLIMITED,
+            &mut NoProgress,
+            &CancelFlag::new()
+        )
+        .is_err()
     );
 }
 
@@ -778,8 +975,14 @@ fn real_archive_extracts_and_verifies() {
     let staged = store.staging_dir(&lock, "real").unwrap();
     let mut progress = Bytes::default();
     let started = std::time::Instant::now();
-    let top =
-        extract::extract_tar_xz(&archive, &staged, &mut progress, &CancelFlag::new()).unwrap();
+    let top = extract::extract_tar_xz(
+        &archive,
+        &staged,
+        UNLIMITED,
+        &mut progress,
+        &CancelFlag::new(),
+    )
+    .unwrap();
     eprintln!("extracted {top} in {:?}", started.elapsed());
     assert_eq!(progress.done, fs::metadata(&archive).unwrap().len());
     let build = fs::read_dir(&staged)

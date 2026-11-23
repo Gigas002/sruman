@@ -1183,7 +1183,7 @@ fn import_archive(
     archive: &Path,
 ) -> Result<Installed, AppError> {
     use libsruman::{
-        install::extract::extract_tar_xz,
+        install::extract::{Limits, extract_tar_xz},
         store::{BuildMeta, MakeCurrent},
     };
 
@@ -1199,7 +1199,10 @@ fn import_archive(
             libsruman::progress::Phase::Extract,
             Some(size),
         );
-        let result = extract_tar_xz(archive, &tree, &mut bar, &CancelFlag::new());
+        // The build's manifest is inside the archive, so the cap follows
+        // the archive's size.
+        let limits = Limits::for_build(None, size);
+        let result = extract_tar_xz(archive, &tree, limits, &mut bar, &CancelFlag::new());
         libsruman::progress::Progress::end(&mut bar, result.is_ok());
         result.map_err(|e| AppError::Failed(format!("{}: {e}", archive.display())))?;
     }

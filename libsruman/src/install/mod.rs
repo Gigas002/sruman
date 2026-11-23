@@ -133,6 +133,9 @@ pub struct TxItem {
     pub url: String,
     /// The runtime's `current` build before the transaction.
     pub current: Option<BuildId>,
+    /// Total `Installed-Size` of the build's packages, when its manifest was
+    /// synced; bounds what extracting the archive may write.
+    pub installed_size_kib: Option<u64>,
     /// `Always` for an `upgrade --allow-downgrade` downgrade; `IfNewer` otherwise.
     pub make_current: MakeCurrent,
 }
@@ -414,9 +417,14 @@ impl Transaction {
                     arch: options.arch.as_str(),
                 })?;
         let url = format!("{}/{build}/{}", sync::images_url(def), archive.file);
+        let installed_size_kib = sync_dir
+            .manifest(&def.name, &build)
+            .map(|manifest| manifest.installed_size_kib())
+            .filter(|&kib| kib > 0);
         self.items.push(TxItem {
             name: def.name.clone(),
             current: store.current(&def.name),
+            installed_size_kib,
             build,
             reason,
             archive,
@@ -635,7 +643,8 @@ impl Transaction {
         let staged = store.staging_dir(lock, &format!("{}-{}", item.name, item.build))?;
         let size = fs::metadata(&archive).ok().map(|m| m.len());
         progress.phase(Phase::Extract, size);
-        let extracted = extract::extract_tar_xz(&archive, &staged, progress, cancel)
+        let limits = extract::Limits::for_build(item.installed_size_kib, size.unwrap_or(0));
+        let extracted = extract::extract_tar_xz(&archive, &staged, limits, progress, cancel)
             .map_err(InstallError::from)
             .and_then(|_| {
                 // pressure-vessel keeps its runtime copies in `var/`, which
