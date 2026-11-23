@@ -86,6 +86,8 @@ pub fn dispatch(app: &mut App, command: &Command) -> Result<u8, AppError> {
             Steam::Status => steam::status(app),
             Steam::Link { runtimes } => steam::link(app, runtimes),
             Steam::Unlink { runtimes } => steam::unlink(app, runtimes),
+            Steam::Verify { runtimes, full } => steam::verify(app, runtimes, *full),
+            Steam::Clean => steam::clean(app),
         },
         Command::ProvideUmu { runtime, app_id } => umu::provide(app, runtime.as_ref(), *app_id),
     }

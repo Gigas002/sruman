@@ -34,6 +34,8 @@ These need the `download` feature (on by default) unless noted.
 | `sruman steam status` | Steam's runtimes (its client's `steamrt3c`, and the game runtimes in each library): linked to which build, or Steam's own copy. Works without `download`. |
 | `sruman steam link` | Replace Steam's runtimes (all, or the named ones) with links to the same builds in the store, importing Steam's copy of a build sruman doesn't have; see [Steam](#steam). Steam must not run. Works without `download`. |
 | `sruman steam unlink` | Put copies of the builds back in place of the links, so Steam has its own runtimes again. Steam must not run. Works without `download`. |
+| `sruman steam verify` | Check the builds Steam links to (all, or the named runtimes) as `verify` does; `--full` also checks every file's SHA-256. A build Steam updated in place fails. Works without `download`. |
+| `sruman steam clean` | Remove the builds Steam updated in place and no longer links to (what `steam link` leaves after a Steam update). Works without `download`. |
 | `sruman doctor` | Check unprivileged user namespaces, bubblewrap and the installed runtimes (needs the `diag` feature, on by default). |
 
 ### Games and profiles
@@ -174,12 +176,15 @@ yet is imported from Steam's copy (nothing is downloaded); every build is
 checked against its file list before Steam's copy is replaced.
 
 - A link names one build, not `current`: `upgrade` doesn't move a runtime
-  under Steam, and `clean` and `remove` keep the builds Steam links to
-  (`remove` names the link; `--force` removes the build anyway).
+  under Steam.
+- Builds Steam links to belong to the `steam` commands: `clean` keeps them
+  (and says so), and `remove` refuses them even with `--force` until
+  `steam unlink`.
 - When Steam updates a runtime, it writes the new build through the link
-  into the old one. `steam status` shows that as "updated by Steam";
-  `steam link` then imports the new build, repoints the link, and tells you
-  how to reinstall the old one.
+  into the old one. `steam status` shows that as "updated by Steam", and
+  `steam verify` fails. `steam link` then imports the new build and
+  repoints the link; `steam clean` removes the old one, whose files are the
+  new build's now.
 - `steam unlink` copies the builds back, which undoes it.
 
 Quit Steam before `link` and `unlink` (sruman refuses while it runs, exit

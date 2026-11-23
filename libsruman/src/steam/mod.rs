@@ -423,6 +423,25 @@ impl Steam {
     }
 }
 
+/// Builds of Steam's runtimes whose files are another build now: Steam
+/// updated them in place through a link (`VERSIONS.txt` names another
+/// build). `sruman steam clean` removes the ones Steam no longer links to.
+pub fn rewritten(store: &Store) -> Result<Vec<Installed>, StoreError> {
+    let names = std::iter::once(CLIENT_RUNTIME).chain(GAME_FOLDERS.iter().map(|(name, _)| *name));
+    let mut out = Vec::new();
+    for name in names {
+        for build in store.installed_of(name)? {
+            let now = fs::canonicalize(&build.dir)
+                .ok()
+                .and_then(|dir| import::depot_build(&dir).ok());
+            if now.is_some_and(|now| now != build.build) {
+                out.push(build);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The `path` values of Steam's `libraryfolders.vdf`.
 fn library_paths(text: &str) -> Vec<PathBuf> {
     text.lines()

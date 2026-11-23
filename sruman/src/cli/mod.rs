@@ -329,6 +329,17 @@ pub enum SteamCommand {
         #[arg(value_parser = runtime_name)]
         runtimes: Vec<String>,
     },
+    /// Check the builds Steam links to against their file lists.
+    Verify {
+        /// Runtimes to check; all of Steam's without arguments.
+        #[arg(value_parser = runtime_name)]
+        runtimes: Vec<String>,
+        /// Check content hashes too.
+        #[arg(long)]
+        full: bool,
+    },
+    /// Remove builds Steam updated in place and no longer links to.
+    Clean,
 }
 
 #[derive(Debug, Subcommand)]
@@ -573,6 +584,10 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
             SteamCommand::Status { json } => (Cmd::Steam(Steam::Status), json.get()),
             SteamCommand::Link { runtimes } => plain(Cmd::Steam(Steam::Link { runtimes })),
             SteamCommand::Unlink { runtimes } => plain(Cmd::Steam(Steam::Unlink { runtimes })),
+            SteamCommand::Verify { runtimes, full } => {
+                plain(Cmd::Steam(Steam::Verify { runtimes, full }))
+            }
+            SteamCommand::Clean => plain(Cmd::Steam(Steam::Clean)),
         },
         Command::ProvideUmu {
             runtime,

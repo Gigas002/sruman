@@ -1,7 +1,7 @@
 //! `steam status|link|unlink` (D17): Steam on sruman's runtimes.
 
 use libsruman::{
-    steam::{Slot, State, Steam, SteamError},
+    steam::{self, Slot, State, Steam, SteamError},
     store::Installed,
 };
 
@@ -215,7 +215,7 @@ pub fn link(app: &mut App, names: &[String]) -> Result<u8, AppError> {
             tracing::warn!(runtime = old.name, build = %old.build, "updated in place by Steam");
             app.out.warning(format!(
                 "Steam updated {name} {build} in place, so its files no longer match it; \
-                 reinstall it with `sruman remove {name}={build} && sruman install {name}={build}`",
+                 `sruman steam clean` removes it (reinstall it with `sruman install {name}={build}` if you need it)",
                 name = old.name,
                 build = old.build
             ))?;
@@ -248,4 +248,97 @@ pub fn unlink(app: &mut App, names: &[String]) -> Result<u8, AppError> {
         }
         Ok(())
     })
+}
+
+/// `steam verify [rt…] [--full]`: the builds Steam links to, through
+/// `verify`; a build Steam updated in place fails.
+pub fn verify(app: &mut App, names: &[String], full: bool) -> Result<u8, AppError> {
+    let steam = steam(app)?;
+    let store = app.store();
+    let mut targets = Vec::new();
+    let mut bad = false;
+    for slot in select(&steam, names)? {
+        match slot.state(&store)? {
+            State::Linked(build) => {
+                if !targets.contains(&build.as_ref()) {
+                    targets.push(build.as_ref());
+                }
+            }
+            State::Changed { build, now } => {
+                bad = true;
+                app.out.error(format!(
+                    "{} {}: updated by Steam to {}; `sruman steam link` takes the new build",
+                    build.name,
+                    build.build,
+                    now.map_or_else(|| "?".to_owned(), |b| b.to_string())
+                ))?;
+            }
+            State::Copy(_) => app.out.info(format!(
+                "{}: Steam's copy, not sruman's; not checked",
+                slot.runtime
+            ))?,
+            State::Foreign(target) => {
+                bad = true;
+                app.out.error(format!(
+                    "{}: links to {}, not to a sruman build",
+                    slot.path.display(),
+                    target.display()
+                ))?;
+            }
+        }
+    }
+    let code = if targets.is_empty() {
+        0
+    } else {
+        super::runtimes::verify(app, &targets, full)?
+    };
+    Ok(code.max(u8::from(bad)))
+}
+
+/// `steam clean`: builds Steam updated in place that it no longer links
+/// to (left by `steam link` moving the link to the new build).
+pub fn clean(app: &mut App) -> Result<u8, AppError> {
+    let store = app.store();
+    let linked: Vec<Installed> = linked_builds(app).into_iter().map(|(_, b)| b).collect();
+    let mut builds = Vec::new();
+    for build in steam::rewritten(&store)? {
+        if linked.contains(&build) {
+            app.out.warning(format!(
+                "{} {}: Steam updated it and still links to it; run `sruman steam link` first",
+                build.name, build.build
+            ))?;
+        } else {
+            builds.push(build);
+        }
+    }
+    if builds.is_empty() {
+        app.out.info("nothing to clean")?;
+        return Ok(0);
+    }
+    let problems = super::runtimes::users(app, &store, &builds)?;
+    if !problems.is_empty() {
+        return Err(AppError::Invalid(format!(
+            "{}\n(`sruman remove --force` removes them anyway)",
+            problems.join("\n")
+        )));
+    }
+    let labels: Vec<String> = builds
+        .iter()
+        .map(|b| format!("{}-{}", b.name, b.build))
+        .collect();
+    app.out.info(format!(
+        "Steam updated these in place: {}",
+        labels.join("  ")
+    ))?;
+    if !app.out.confirm("Remove them?", true)? {
+        return Err(AppError::Cancelled);
+    }
+    let lock = store.lock()?;
+    for build in &builds {
+        store.remove(&lock, build, false)?;
+        tracing::info!(runtime = build.name, build = %build.build, "removed after a Steam update");
+        app.out
+            .info(format!("removed {} {}", build.name, build.build))?;
+    }
+    Ok(0)
 }

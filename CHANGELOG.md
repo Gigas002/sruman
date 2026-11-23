@@ -6,10 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- `sruman steam status|link|unlink`: Steam runs its client and games on
-  sruman's runtimes. `link` replaces Steam's own copies with links to the
-  same builds (importing Steam's copy when needed), `clean` and `remove`
-  keep the builds Steam links to, and `unlink` puts copies back.
+- `sruman steam status|link|unlink|verify|clean`: Steam runs its client and
+  games on sruman's runtimes. `link` replaces Steam's own copies with links
+  to the same builds (importing Steam's copy when needed), `unlink` puts
+  copies back, `verify` checks the linked builds, and `clean` removes builds
+  Steam updated in place. Plain `clean` keeps the builds Steam links to and
+  says so; `remove` refuses them, even with `--force`.
   `steam_dir` in `config.toml` names Steam's folder.
 - The `steamrt3c` runtime, the one Steam's 64-bit client runs in.
 

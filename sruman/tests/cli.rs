@@ -587,9 +587,42 @@ fn steam_link_status_and_unlink() {
         assert_eq!(rows[0]["build"], "4.0.1");
     }
 
-    // remove keeps a build Steam links to.
-    let (_, err) = expect(&s.run(&["remove", "steamrt4"]), 2);
+    // remove keeps a build Steam links to, even with --force.
+    let (_, err) = expect(&s.run(&["remove", "--force", "steamrt4"]), 2);
     assert!(err.contains("Steam links to it"), "{err}");
+    assert!(
+        err.contains("`sruman steam unlink steamrt4` first"),
+        "{err}"
+    );
+    let (_, err) = expect(&s.run(&["steam", "verify"]), 0);
+    assert!(err.contains("steamrt4 4.0.1: no file list"), "{err}");
+    let (out, _) = expect(&s.run(&["steam", "clean"]), 0);
+    assert_eq!(out, "nothing to clean\n");
+
+    // Steam updates the runtime through the link.
+    fs::write(build.join("VERSIONS.txt"), "#Name\tVersion\ndepot\t4.0.2\n").unwrap();
+    fs::create_dir_all(build.join("steamrt4_platform_4.0.2/files")).unwrap();
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("updated by Steam to 4.0.2"), "{out}");
+    let (_, err) = expect(&s.run(&["steam", "verify"]), 1);
+    assert!(
+        err.contains("`sruman steam link` takes the new build"),
+        "{err}"
+    );
+    let (_, err) = expect(&s.run(&["steam", "clean"]), 0);
+    assert!(err.contains("run `sruman steam link` first"), "{err}");
+    let (out, err) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(
+        out,
+        "linked steamrt4 4.0.2 for Steam (imported Steam's copy)\n"
+    );
+    assert!(err.contains("`sruman steam clean` removes it"), "{err}");
+    let new = s.root().join("data/sruman/runtimes/steamrt4/4.0.2");
+    assert_eq!(fs::read_link(&slot).unwrap(), new);
+    let (out, _) = expect(&s.run(&["-y", "steam", "clean"]), 0);
+    assert!(out.ends_with("removed steamrt4 4.0.1\n"), "{out}");
+    assert!(!build.exists());
+    let build = new;
 
     let (out, _) = expect(&s.run(&["steam", "unlink"]), 0);
     assert_eq!(out, "steamrt4: Steam has its own copy again\n");

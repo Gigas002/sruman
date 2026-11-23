@@ -203,7 +203,14 @@ fn an_update_through_the_link_is_imported_and_relinked() {
     let linked = w.link("steamrt4");
     assert!(linked.changed && linked.imported);
     assert_eq!(linked.build.build, id("4.0.2"));
-    assert_eq!(linked.damaged, Some(old));
+    assert_eq!(linked.damaged, Some(old.clone()));
+    // 4.0.2 is `current` now; the old build is the one Steam wrote over.
+    let over: Vec<_> = rewritten(&w.store)
+        .unwrap()
+        .into_iter()
+        .map(|b| b.as_ref())
+        .collect();
+    assert_eq!(over, [old.as_ref()]);
     assert_eq!(fs::read_link(&slot.path).unwrap(), linked.build.dir);
     assert_eq!(
         names(&linked.build.dir),

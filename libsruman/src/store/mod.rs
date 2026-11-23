@@ -230,6 +230,9 @@ pub struct CleanPolicy {
     pub keep: usize,
     /// Builds that must stay (profiles pin them).
     pub protect: Vec<RuntimeRef>,
+    /// Builds Steam links to (`sruman steam`): kept, and reported as
+    /// [`KeptBecause::Steam`].
+    pub steam: Vec<RuntimeRef>,
 }
 
 /// Why [`Store::clean`] kept a build it would otherwise remove.
@@ -239,6 +242,8 @@ pub enum KeptBecause {
     InUse,
     /// It was registered in place (`import --link`).
     Linked,
+    /// Steam links to it (`sruman steam link`).
+    Steam,
 }
 
 /// What [`Store::clean`] did.
@@ -644,6 +649,10 @@ impl Store {
                     .iter()
                     .any(|r| r.name == build.name && r.build.as_ref() == Some(&build.build));
                 if build.is_current || rank < policy.keep || protected {
+                    continue;
+                }
+                if policy.steam.contains(&build.as_ref()) {
+                    report.kept.push((build.clone(), KeptBecause::Steam));
                     continue;
                 }
                 if build.is_linked() {
