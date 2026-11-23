@@ -134,8 +134,9 @@ tee'd single pass would complicate resuming. **Accepted.**
   | `--no-default-features` | 4,888 KiB | 69 | 6,144 KiB, 86 |
   | default (= all) | 8,589 KiB | 95 | 10,752 KiB, 119 |
 
-  There's no `[profile.release]` with `strip` or LTO. Packagers strip
-  anyway (`makepkg` does by default). **Accepted.**
+  There's no `[profile.release]` with `strip` or LTO: `deploy.yml` strips
+  the released binary, and so do packagers (`makepkg` by default).
+  **Accepted.**
 
 ## 3. Usability and bugs (5.5c)
 
