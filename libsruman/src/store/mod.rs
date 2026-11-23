@@ -230,6 +230,9 @@ pub struct CleanPolicy {
     pub keep: usize,
     /// Builds that must stay (profiles pin them).
     pub protect: Vec<RuntimeRef>,
+    /// Builds Steam links to (`sruman steam`): kept, and reported as
+    /// [`KeptBecause::Steam`].
+    pub steam: Vec<RuntimeRef>,
 }
 
 /// Why [`Store::clean`] kept a build it would otherwise remove.
@@ -239,6 +242,8 @@ pub enum KeptBecause {
     InUse,
     /// It was registered in place (`import --link`).
     Linked,
+    /// Steam links to it (`sruman steam link`).
+    Steam,
 }
 
 /// What [`Store::clean`] did.
@@ -520,6 +525,13 @@ impl Store {
             || held_by_pressure_vessel(&build.dir.join("var"))
     }
 
+    /// Whether pressure-vessel runs something from the runtime at `dir`
+    /// (its lock in `var/tmp-*/.ref`), whatever the directory is: a build,
+    /// or Steam's own copy of a runtime.
+    pub fn dir_in_use(dir: &Path) -> bool {
+        held_by_pressure_vessel(&dir.join("var"))
+    }
+
     /// The package list shipped inside a container build
     /// (`<suite>_platform_<build>/files/manifest.dpkg`); `None` for builds
     /// without one (scout-ldlp) or when it's unreadable.
@@ -637,6 +649,10 @@ impl Store {
                     .iter()
                     .any(|r| r.name == build.name && r.build.as_ref() == Some(&build.build));
                 if build.is_current || rank < policy.keep || protected {
+                    continue;
+                }
+                if policy.steam.contains(&build.as_ref()) {
+                    report.kept.push((build.clone(), KeptBecause::Steam));
                     continue;
                 }
                 if build.is_linked() {

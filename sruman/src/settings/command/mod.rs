@@ -108,6 +108,8 @@ pub enum Command {
     /// `doctor [rt…]`, for the named runtimes or every installed one.
     #[cfg(feature = "diag")]
     Doctor { runtimes: Vec<RuntimeRef> },
+    /// `steam …`.
+    Steam(Steam),
     /// `provide-umu <rt>[=build] | --appid <id>`; exactly one is set.
     ProvideUmu {
         runtime: Option<RuntimeRef>,
@@ -159,6 +161,16 @@ impl LaunchMode {
             (false, false) => Self::Detach,
         }
     }
+}
+
+/// `steam …`: runtime names, all of Steam's when empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Steam {
+    Status,
+    Link { runtimes: Vec<String> },
+    Unlink { runtimes: Vec<String> },
+    Verify { runtimes: Vec<String>, full: bool },
+    Clean,
 }
 
 /// `profiles …`.
@@ -246,6 +258,13 @@ impl Command {
             },
             #[cfg(feature = "diag")]
             Self::Doctor { .. } => "doctor",
+            Self::Steam(steam) => match steam {
+                Steam::Status => "steam status",
+                Steam::Link { .. } => "steam link",
+                Steam::Unlink { .. } => "steam unlink",
+                Steam::Verify { .. } => "steam verify",
+                Steam::Clean => "steam clean",
+            },
             Self::ProvideUmu { .. } => "provide-umu",
         }
     }

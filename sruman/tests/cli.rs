@@ -553,6 +553,90 @@ fn provide_umu_builds_the_view() {
     assert!(err.contains("umu has no folder for scout"), "{err}");
 }
 
+#[test]
+fn steam_link_status_and_unlink() {
+    let s = Sruman::new();
+    let (_, err) = expect(&s.run(&["steam", "status"]), 2);
+    assert!(err.contains("set `steam_dir`"), "{err}");
+    let common = s.root().join("data/Steam/steamapps/common");
+    fs::create_dir_all(&common).unwrap();
+    let slot = common.join("SteamLinuxRuntime_4");
+    fs::rename(s.fake_runtime(), &slot).unwrap();
+
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("Steam's copy"), "{out}");
+    let (_, err) = expect(&s.run(&["steam", "link", "steamrt3c"]), 2);
+    assert!(
+        err.contains("Steam has no `steamrt3c`; it has: steamrt4"),
+        "{err}"
+    );
+    let (out, _) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(
+        out,
+        "linked steamrt4 4.0.1 for Steam (imported Steam's copy)\n"
+    );
+    let build = s.root().join("data/sruman/runtimes/steamrt4/4.0.1");
+    assert_eq!(fs::read_link(&slot).unwrap(), build);
+    let (out, _) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(out, "steamrt4 4.0.1: linked already\n");
+    #[cfg(feature = "json")]
+    {
+        let (out, _) = expect(&s.run(&["steam", "status", "--json"]), 0);
+        let rows: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(rows[0]["state"], "linked");
+        assert_eq!(rows[0]["build"], "4.0.1");
+    }
+
+    // remove keeps a build Steam links to, even with --force.
+    let (_, err) = expect(&s.run(&["remove", "--force", "steamrt4"]), 2);
+    assert!(err.contains("Steam links to it"), "{err}");
+    assert!(
+        err.contains("`sruman steam unlink steamrt4` first"),
+        "{err}"
+    );
+    let (_, err) = expect(&s.run(&["steam", "verify"]), 0);
+    assert!(err.contains("steamrt4 4.0.1: no file list"), "{err}");
+    let (out, _) = expect(&s.run(&["steam", "clean"]), 0);
+    assert_eq!(out, "nothing to clean\n");
+
+    // Steam updates the runtime through the link.
+    fs::write(build.join("VERSIONS.txt"), "#Name\tVersion\ndepot\t4.0.2\n").unwrap();
+    fs::create_dir_all(build.join("steamrt4_platform_4.0.2/files")).unwrap();
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("updated by Steam to 4.0.2"), "{out}");
+    let (_, err) = expect(&s.run(&["steam", "verify"]), 1);
+    assert!(
+        err.contains("`sruman steam link` takes the new build"),
+        "{err}"
+    );
+    let (_, err) = expect(&s.run(&["steam", "clean"]), 0);
+    assert!(err.contains("run `sruman steam link` first"), "{err}");
+    let (out, err) = expect(&s.run(&["steam", "link"]), 0);
+    assert_eq!(
+        out,
+        "linked steamrt4 4.0.2 for Steam (imported Steam's copy)\n"
+    );
+    assert!(err.contains("`sruman steam clean` removes it"), "{err}");
+    let new = s.root().join("data/sruman/runtimes/steamrt4/4.0.2");
+    assert_eq!(fs::read_link(&slot).unwrap(), new);
+    let (out, _) = expect(&s.run(&["-y", "steam", "clean"]), 0);
+    assert!(out.ends_with("removed steamrt4 4.0.1\n"), "{out}");
+    assert!(!build.exists());
+    let build = new;
+
+    let (out, _) = expect(&s.run(&["steam", "unlink"]), 0);
+    assert_eq!(out, "steamrt4: Steam has its own copy again\n");
+    assert!(
+        !fs::symlink_metadata(&slot)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(slot.join("run").is_file() && build.join("run").is_file());
+    let (out, _) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("Steam's copy"), "{out}");
+}
+
 #[cfg(feature = "download")]
 mod server {
     use super::*;

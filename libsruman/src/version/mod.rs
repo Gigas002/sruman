@@ -1,7 +1,8 @@
 //! Runtime build ids, runtime references and update channels.
 //!
 //! A [`BuildId`] is Valve's build id from `VERSION.txt`
-//! (`3.0.20261021.266025`). A [`RuntimeRef`] names a runtime and optionally
+//! (`3.0.20261021.266025`, or `3c.0.20261103.268067` for the Steam client's
+//! runtime). A [`RuntimeRef`] names a runtime and optionally
 //! pins a build, in pacman's `name=version` form: `sniper` or
 //! `sniper=3.0.20261021.266025`.
 
@@ -33,8 +34,9 @@ pub enum ParseError {
     Channel(String),
 }
 
-/// Valve's build id. Ordered numerically, part by part; a build id that is
-/// a prefix of another sorts first.
+/// Valve's build id. Each part is a number, optionally followed by lowercase
+/// letters (`3c`: the client runtime's major version). Ordered numerically,
+/// part by part; a build id that is a prefix of another sorts first.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BuildId {
     text: String,
@@ -47,7 +49,8 @@ impl BuildId {
         &self.text
     }
 
-    /// The numeric parts, e.g. `[3, 0, 20261021, 266025]`.
+    /// The numeric parts, e.g. `[3, 0, 20261021, 266025]` (letter suffixes
+    /// dropped: `3c` is 3).
     pub fn parts(&self) -> &[u64] {
         &self.parts
     }
@@ -65,10 +68,11 @@ impl FromStr for BuildId {
         let parts = text
             .split('.')
             .map(|part| {
-                if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+                let digits = part.trim_end_matches(|c: char| c.is_ascii_lowercase());
+                if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
                     return Err(err());
                 }
-                part.parse::<u64>().map_err(|_| err())
+                digits.parse::<u64>().map_err(|_| err())
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {

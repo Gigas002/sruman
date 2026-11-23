@@ -2,13 +2,17 @@
 //! and running, profiles, doctor.
 
 use super::{App, AppError, supervisor};
-use crate::settings::{Command, command::Profiles};
+use crate::settings::{
+    Command,
+    command::{Profiles, Steam},
+};
 
 #[cfg(feature = "diag")]
 pub mod doctor;
 pub mod games;
 pub mod profiles;
 pub mod runtimes;
+pub mod steam;
 pub mod umu;
 
 #[cfg(test)]
@@ -78,6 +82,13 @@ pub fn dispatch(app: &mut App, command: &Command) -> Result<u8, AppError> {
         },
         #[cfg(feature = "diag")]
         Command::Doctor { runtimes } => doctor::doctor(app, runtimes),
+        Command::Steam(command) => match command {
+            Steam::Status => steam::status(app),
+            Steam::Link { runtimes } => steam::link(app, runtimes),
+            Steam::Unlink { runtimes } => steam::unlink(app, runtimes),
+            Steam::Verify { runtimes, full } => steam::verify(app, runtimes, *full),
+            Steam::Clean => steam::clean(app),
+        },
         Command::ProvideUmu { runtime, app_id } => umu::provide(app, runtime.as_ref(), *app_id),
     }
 }

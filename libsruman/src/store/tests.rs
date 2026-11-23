@@ -272,12 +272,13 @@ fn clean_keeps_current_newest_pinned_linked_and_in_use() {
             &CleanPolicy {
                 keep: 2,
                 protect: vec![rref("sniper=3.0.4"), rref("sniper")],
+                steam: vec![rref("sniper=3.0.1")],
             },
         )
         .unwrap();
 
     let removed: Vec<String> = report.removed.iter().map(|b| b.build.to_string()).collect();
-    assert_eq!(removed, ["3.0.1"]);
+    assert!(removed.is_empty(), "{removed:?}");
     let kept: Vec<(String, KeptBecause)> = report
         .kept
         .iter()
@@ -287,12 +288,15 @@ fn clean_keeps_current_newest_pinned_linked_and_in_use() {
         kept,
         [
             ("3.0.2".into(), KeptBecause::InUse),
+            ("3.0.1".into(), KeptBecause::Steam),
             ("3.0.0".into(), KeptBecause::Linked)
         ]
     );
     assert_eq!(
         builds(&store, "sniper"),
-        ["3.0.0", "3.0.2", "3.0.3*", "3.0.4", "3.0.5", "3.0.6"]
+        [
+            "3.0.0", "3.0.1", "3.0.2", "3.0.3*", "3.0.4", "3.0.5", "3.0.6"
+        ]
     );
 }
 

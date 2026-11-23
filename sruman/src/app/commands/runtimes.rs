@@ -378,6 +378,20 @@ pub fn remove(app: &mut App, targets: &[RuntimeRef], force: bool) -> Result<u8, 
             }
         }
     }
+    // Steam's builds are `sruman steam`'s business, `--force` or not.
+    let steam: Vec<String> = super::steam::linked_builds(app)
+        .into_iter()
+        .filter(|(_, linked)| builds.contains(linked))
+        .map(|(why, build)| {
+            format!(
+                "{} {}: {why}; `sruman steam unlink {}` first",
+                build.name, build.build, build.name
+            )
+        })
+        .collect();
+    if !steam.is_empty() {
+        return Err(AppError::Invalid(steam.join("\n")));
+    }
     if !force {
         let problems = users(app, &store, &builds)?;
         if !problems.is_empty() {
@@ -431,7 +445,11 @@ pub fn remove(app: &mut App, targets: &[RuntimeRef], force: bool) -> Result<u8, 
 
 /// Why each of `builds` must stay: profiles that use it, and installed
 /// runtimes that run inside it.
-fn users(app: &App, store: &Store, builds: &[Installed]) -> Result<Vec<String>, AppError> {
+pub(super) fn users(
+    app: &App,
+    store: &Store,
+    builds: &[Installed],
+) -> Result<Vec<String>, AppError> {
     let profiles = app.profiles();
     let mut problems = Vec::new();
     for build in builds {
@@ -1049,11 +1067,16 @@ pub fn clean(app: &mut App, all: bool) -> Result<u8, AppError> {
     let store = app.store();
     let lock = store.lock()?;
     let protect = pinned(&app.profiles());
+    let steam = super::steam::linked_builds(app)
+        .iter()
+        .map(|(_, build)| build.as_ref())
+        .collect();
     let report = store.clean(
         &lock,
         &CleanPolicy {
             keep: app.settings.keep_versions,
             protect,
+            steam,
         },
     )?;
     for build in &report.removed {
@@ -1065,6 +1088,7 @@ pub fn clean(app: &mut App, all: bool) -> Result<u8, AppError> {
         let why = match why {
             KeptBecause::InUse => "in use",
             KeptBecause::Linked => "linked",
+            KeptBecause::Steam => "Steam links to it; see `sruman steam`",
         };
         app.out
             .info(format!("kept {} {} ({why})", build.name, build.build))?;

@@ -274,7 +274,14 @@ fn failures_are_per_runtime_and_keep_the_old_index() {
     let names: Vec<&str> = results.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(
         names,
-        ["scout", "scout-twin", "sniper", "soldier", "steamrt4"]
+        [
+            "scout",
+            "scout-twin",
+            "sniper",
+            "soldier",
+            "steamrt3c",
+            "steamrt4"
+        ]
     );
     for (name, outcome) in &results {
         let ok = matches!(outcome, RefreshOutcome::Updated { .. });

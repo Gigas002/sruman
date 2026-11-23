@@ -24,6 +24,9 @@ fn build_id_rejects_garbage() {
         "3.0-beta",
         "v3.0",
         "3.0.x",
+        "c.0.1",
+        "3C.0.1",
+        "3c-1.0",
         "99999999999999999999999",
     ] {
         assert!(text.parse::<BuildId>().is_err(), "{text:?} parsed");
@@ -116,4 +119,12 @@ fn serde_uses_string_forms() {
 
     let err = toml::from_str::<Doc>("runtime = \"sniper=x\"\nchannel = \"beta\"\n").unwrap_err();
     assert!(err.to_string().contains("is not a build id"), "{err}");
+}
+
+#[test]
+fn build_id_accepts_client_runtime_ids() {
+    let id = build("3c.0.20261103.268067");
+    assert_eq!(id.as_str(), "3c.0.20261103.268067");
+    assert_eq!(id.parts(), &[3, 0, 20261103, 268067]);
+    assert!(build("3c.0.20260824.257593") < id);
 }

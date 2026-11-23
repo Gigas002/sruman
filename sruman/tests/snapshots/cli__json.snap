@@ -117,6 +117,14 @@ $ sruman profiles list --json
     "implicit": true,
     "in_use": "<live>",
     "mode": "container",
+    "name": "steamrt3c",
+    "prefix": null,
+    "runtime": "steamrt3c"
+  },
+  {
+    "implicit": true,
+    "in_use": "<live>",
+    "mode": "container",
     "name": "steamrt4",
     "prefix": null,
     "runtime": "steamrt4"

@@ -31,6 +31,11 @@ These need the `download` feature (on by default) unless noted.
 | `sruman verify` | Check installed builds (all without arguments) against Valve's file lists: every file, directory and link present, sizes matching; `--full` also checks every file's SHA-256. Works without `download`. |
 | `sruman import` | Install from a local archive (`SteamLinuxRuntime_4.tar.xz`, needs `download`) or a runtime directory (Steam's or umu's copy). `--link` registers a directory in place instead of copying it; sruman never deletes a linked build's files. |
 | `sruman provide-umu` | Make a runtime umu's folder (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a view of the build), so umu runs it and never downloads its own: `provide-umu steamrt4`, or `--appid 4183110` as Proton's `toolmanifest.vdf` names it. Point umu's `UMU_FOLDERS_PATH` (lootrs: `umu_folders`) at sruman's data directory to use it. |
+| `sruman steam status` | Steam's runtimes (its client's `steamrt3c`, and the game runtimes in each library): linked to which build, or Steam's own copy. Works without `download`. |
+| `sruman steam link` | Replace Steam's runtimes (all, or the named ones) with links to the same builds in the store, importing Steam's copy of a build sruman doesn't have; see [Steam](#steam). Steam must not run. Works without `download`. |
+| `sruman steam unlink` | Put copies of the builds back in place of the links, so Steam has its own runtimes again. Steam must not run. Works without `download`. |
+| `sruman steam verify` | Check the builds Steam links to (all, or the named runtimes) as `verify` does; `--full` also checks every file's SHA-256. A build Steam updated in place fails. Works without `download`. |
+| `sruman steam clean` | Remove the builds Steam updated in place and no longer links to (what `steam link` leaves after a Steam update). Works without `download`. |
 | `sruman doctor` | Check unprivileged user namespaces, bubblewrap and the installed runtimes (needs the `diag` feature, on by default). |
 
 ### Games and profiles
@@ -86,6 +91,7 @@ With `--wait`, the game's own exit code instead.
 | Runtimes | `~/.local/share/sruman/runtimes/<name>/<build>/` |
 | Prefixes | `~/.local/share/sruman/prefixes/<profile>/` (`prefix_root`) |
 | umu views | `~/.local/share/sruman/umu/<variant>/` |
+| Steam | `steam_dir` in `config.toml`, else `~/.steam/root`, else `~/.local/share/Steam` |
 | Sync index | `~/.cache/sruman/sync/` |
 | Download cache | `~/.cache/sruman/pkg/` |
 | App logs | `~/.local/state/sruman/logs/` (daily, `log_keep` kept) |
@@ -153,6 +159,37 @@ the system, then the game's output. Don't put secrets in a profile's or
 game's `env`; they end up in the run log (which is `0600`). `-v` logs to
 stderr as well, and the daily app log under `logs/` records what each
 command did.
+
+## Steam
+
+Steam keeps its own copy of every runtime: one for its client
+(`steamrt64/pv-runtime/steam-runtime-steamrt`, the `steamrt3c` runtime) and
+the game runtimes as apps in each library
+(`steamapps/common/SteamLinuxRuntime_4`, `_soldier`, `_sniper`, and scout's
+`SteamLinuxRuntime`). Steam checks its client files at every start and puts
+a missing runtime back, so deleting them doesn't last.
+
+`sruman steam link` replaces each with a symlink to the same build in
+sruman's store: Steam follows the link and finds the files it expects, and
+runs its client and games on sruman's runtimes. A build sruman doesn't have
+yet is imported from Steam's copy (nothing is downloaded); every build is
+checked against its file list before Steam's copy is replaced.
+
+- A link names one build, not `current`: `upgrade` doesn't move a runtime
+  under Steam.
+- Builds Steam links to belong to the `steam` commands: `clean` keeps them
+  (and says so), and `remove` refuses them even with `--force` until
+  `steam unlink`.
+- When Steam updates a runtime, it writes the new build through the link
+  into the old one. `steam status` shows that as "updated by Steam", and
+  `steam verify` fails. `steam link` then imports the new build and
+  repoints the link; `steam clean` removes the old one, whose files are the
+  new build's now.
+- `steam unlink` copies the builds back, which undoes it.
+
+Quit Steam before `link` and `unlink` (sruman refuses while it runs, exit
+code 4). sruman finds Steam through `~/.steam/root`; set `steam_dir` for
+another one.
 
 ## Using sruman from lootrs and gaki
 
