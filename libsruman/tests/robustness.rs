@@ -1,7 +1,7 @@
 //! Property tests (PLAN 5.5a/5.5c): every parser of outside data takes
 //! arbitrary input without panicking, and the version and manifest types
-//! keep their laws. The cargo-fuzz targets in `fuzz/` drive the same entry
-//! points with coverage guidance; these run in every `cargo test`.
+//! keep their laws. They run in every `cargo test`; `PROPTEST_CASES=50000`
+//! runs a longer pass.
 
 use std::{cmp::Ordering, collections::BTreeMap, path::Path};
 

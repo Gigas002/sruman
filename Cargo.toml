@@ -1,7 +1,5 @@
 [workspace]
 members = ["libsruman", "sruman"]
-# cargo-fuzz targets build on nightly, in their own workspace.
-exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.package]

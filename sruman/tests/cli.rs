@@ -346,7 +346,6 @@ fn json_schemas() {
         &["show", "cli-json", "--json"],
         &["profiles", "list", "--json"],
         &["profiles", "show", "box", "--json"],
-        &["status", "--json"],
     ] {
         let (out, _) = expect(&s.run(args), 0);
         let mut value: serde_json::Value = serde_json::from_str(&out).expect(&out);
@@ -358,6 +357,11 @@ fn json_schemas() {
             text.replace(&root, "<tmp>")
         ));
     }
+    // `status` lists every sruman session on the machine, other tests'
+    // included, so only its form is checked.
+    let (out, _) = expect(&s.run(&["status", "--json"]), 0);
+    let status: serde_json::Value = serde_json::from_str(&out).expect(&out);
+    assert!(status.is_array(), "{out}");
     insta::assert_snapshot!("json", shown);
 }
 

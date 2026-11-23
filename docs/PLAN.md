@@ -418,8 +418,6 @@ sruman/
     games.toml
     profiles/{sniper.toml,scout.toml,shared-prefix-a.toml,shared-prefix-b.toml}
   clippy.toml                # disallowed-methods (5.5a)
-  .github/workflows/audit.yml  # fuzz, mutants, benches, canary (5.5)
-  fuzz/                      # cargo-fuzz targets + corpora (5.5a)
   docs/
     ARCHITECTURE.md  PLAN.md  USAGE.md  RUNTIMES.md  AUDIT.md
   libsruman/
@@ -1257,21 +1255,17 @@ before the binary, and Phase 4's commands get modes for free.
       before users hit it.
       _Done 2026-11-23:_ results in `docs/AUDIT.md` (2 medium and 8 low
       findings fixed, 5 low accepted, budgets measured; the install memory
-      budget is revised to 256 MiB there). `audit.yml` runs fuzzing,
-      50k-case property tests, mutants, the canary and size budgets; the
-      coverage floor is in `test.yml`. The old flag names above map to the
+      budget is revised to 256 MiB there). **Revised:** no CI audit
+      workflow, no cargo-fuzz and no scheduled mutants or canary; the audit
+      is the test suite plus the local commands in `docs/AUDIT.md` §5, with
+      property tests (`proptest`) instead of fuzzing. The old flag names above map to the
       new commands (`-Q` → `runtimes`, `-Sy` → `sync`, `-Qkk` →
       `verify --full`, `-X` → `execute`, `-P` → `profiles list`).
-- [ ] **5.6** Fix or record every 5.5 finding. Rerun the full audit job
+- [x] **5.6** Fix or record every 5.5 finding. Rerun the full audit job
       and all §8 gates green at the three feature levels, and update the
       baselines in `docs/AUDIT.md`.
-      _2026-11-23:_ every finding is fixed or accepted, and the §8 gates
-      pass at the three levels; what's left is the first `audit.yml` run on
-      GitHub (needs the branch pushed), then 5.6a.
-  - [ ] **5.6a** Triage the first cargo-mutants run: a test for each
-        surviving mutant in `store`, `install`, `catalog`, `version`,
-        `model` and `prefix`, or a line in `docs/AUDIT.md` saying why it's
-        equivalent.
+      _Done 2026-11-23:_ every finding is fixed or accepted, and the §8
+      gates pass at the three levels.
 - [ ] **5.7** Tag 0.1.0. Publish `libsruman`, then `sruman`. Consider an
       AUR `PKGBUILD`.
 

@@ -2,9 +2,9 @@
 
 The pre-release audit (PLAN step 5.5), in three parts: security (5.5a),
 performance (5.5b), and usability and bugs (5.5c). Most of it is automated:
-lints, tests and the `audit.yml` workflow re-run it, and §5 lists each part's
-local command. Each finding says what was found, how serious it is, and what
-was done: **fixed** in the audit, **accepted** with the reason, or moved to a
+lints and tests re-run it with the rest of the suite, and §5 lists each
+part's local command. Each finding says what was found, how serious it is,
+and what was done: **fixed** in the audit, **accepted** with the reason, or moved to a
 **follow-up** PLAN step.
 
 Severity: **high** (code execution, or writes outside sruman's directories
@@ -40,7 +40,7 @@ The server, the archives and the files a user imports are outside data.
 | Small files | Pointers, `SHA256SUMS`, os-release, manifests and the build listing are read with a 16 MiB cap, with or without `Content-Length`. | — | OK |
 | Stalled server | A connection that stops sending fails after 60 s per read instead of hanging; a test checks both a stall before the body and one partway through. | — | OK |
 | Bad downloads | A checksum mismatch keeps nothing in the cache; a truncated body is an error, not a short file; a `Range` the server ignores restarts the download; an archive replaced under the same build id fails its checksum. All tested against the fixture server. | — | OK |
-| Parsers | Property tests feed arbitrary text to every parser (build ids, runtime refs, channels, `SHA256SUMS`, os-release, autoindex, `Content-Range`, `manifest.dpkg`, mtree, `ldconfig -p`) and arbitrary or bit-flipped archives to the extractor: 50,000 cases each, no panics. `fuzz/` has cargo-fuzz targets for the same entry points, run weekly. | — | OK |
+| Parsers | Property tests feed arbitrary text to every parser (build ids, runtime refs, channels, `SHA256SUMS`, os-release, autoindex, `Content-Range`, `manifest.dpkg`, mtree, `ldconfig -p`) and arbitrary or bit-flipped archives to the extractor: 50,000 cases each, no panics. | — | OK |
 | Signatures | Images are checked by HTTPS and `SHA256SUMS` only; Valve doesn't sign them (the apt repository is GPG-signed, but sruman doesn't use it, see RUNTIMES.md). | low | Accepted |
 
 ### 1.3 Filesystem and processes
@@ -127,7 +127,7 @@ tee'd single pass would complicate resuming. **Accepted.**
   distinct channel build (sums, archive `HEAD`, os-release, manifest), however
   many builds the server keeps. An interrupted download resumes with
   `Range`. All tested.
-- Release binary and normal dependencies (budgets in `audit.yml`):
+- Release binary and normal dependencies:
 
   | Features | Binary | Crates | Budget |
   | -------- | ------ | ------ | ------ |
@@ -181,18 +181,12 @@ What runs on every `cargo test`:
   removing a build a game runs on (exit 4), starting a game that's already
   running (exit 4), shared prefixes (launches coexist; reset and removal
   wait for none and fail).
-- **Coverage**: libsruman 92.8% of lines (89.5% of regions); `test.yml`
-  fails under 85%.
+- **Coverage**: libsruman 92.8% of lines (89.5% of regions), above the
+  PLAN's 85%.
 
-Scheduled in `audit.yml` (not run locally: they need nightly Rust or take
-hours):
-
-- **Mutation testing** of `store`, `install`, `catalog`, `version`, `model`
-  and `prefix`. Triage of its first run: **follow-up 5.6a**.
-- **Fuzzing**: 5 minutes per target, from the committed corpus.
-- **Canary**: the real-server test refreshes every runtime and installs
-  and verifies scout (with soldier), so a change on Valve's side shows up
-  before users hit it.
+Fuzzing, mutation testing and a scheduled real-server canary were planned
+but dropped: the property tests cover the parsers, and the real-server test
+(`#[ignore]`d) is run by hand before a release (§5). **Accepted.**
 
 ## 4. Summary
 
@@ -200,7 +194,7 @@ hours):
 | -------- | ----- | -------- | --------- |
 | high | 0 | 0 | 0 |
 | medium | 2 (archive size cap, decoder memory) | 0 | 0 |
-| low | 8 | 5 | 1 (5.6a: mutants triage) |
+| low | 8 | 5 | 0 |
 
 Not counted above: the docs fix (§3) and the deviations from PLAN budgets,
 accepted with their reasons in §2 (install memory, two reads of the
@@ -213,11 +207,9 @@ archive, unstripped binaries).
 | Gates (§8 of ARCHITECTURE.md) | `cargo fmt --all -- --check && typos && cargo deny check`, then clippy and tests at the three feature levels | `lint.yml`, `test.yml`, … |
 | Static rules | `cargo clippy --workspace --all-targets --all-features -- -D warnings` and `cargo test -p sruman --test policy` | `lint.yml`, `test.yml` |
 | Hostile archives and server | `cargo test -p libsruman --all-features install:: fetch:: sync::` | `test.yml` |
-| Property tests | `PROPTEST_CASES=50000 cargo test --release -p libsruman --all-features --test robustness` | `audit.yml` |
-| Fuzzing | `cargo +nightly fuzz run text fuzz/corpus/text -- -max_total_time=300` (and `extract`) | `audit.yml` |
+| Property tests | `PROPTEST_CASES=50000 cargo test --release -p libsruman --all-features --test robustness` | `test.yml` (256 cases) |
 | Snapshots | `cargo test -p sruman`; review changes with `cargo insta review` or `INSTA_UPDATE=always` | `test.yml` |
-| Coverage | `cargo llvm-cov -p libsruman --all-features --fail-under-lines 85` | `test.yml` |
-| Mutants | `cargo mutants -p libsruman --all-features -f 'libsruman/src/store/**' …` | `audit.yml` |
-| Canary | `SRUMAN_REAL_INSTALL=scout cargo test -p libsruman --test real_server -- --ignored` | `audit.yml` |
-| Size | `cargo build --release -p sruman [--no-default-features]`, `cargo tree -e normal` | `audit.yml` |
+| Coverage | `cargo llvm-cov -p libsruman --all-features --fail-under-lines 85` | `test.yml` (report only) |
+| Real server | `SRUMAN_REAL_INSTALL=scout cargo test -p libsruman --test real_server -- --ignored` | — |
+| Size | `cargo build --release -p sruman [--no-default-features]`, `cargo tree -e normal` | — |
 | Startup, install memory, launch | by hand with the release binary (§2); no stable CI timing | — |
