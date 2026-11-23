@@ -817,12 +817,13 @@ Run Steam on sruman's runtimes: replace Steam's own copies with links to the sam
 Usage: sruman steam [OPTIONS] <COMMAND>
 
 Commands:
-  status  Steam's runtimes: linked to which build, or Steam's own copy
-  link    Replace Steam's runtimes with links to the same builds, importing Steam's copy of a build sruman doesn't have. Steam must not run
-  unlink  Put copies of the builds back in place of the links. Steam must not run
-  verify  Check the builds Steam links to against their file lists
-  clean   Remove builds Steam updated in place and no longer links to
-  help    Print this message or the help of the given subcommand(s)
+  status    Steam's runtimes: linked to which build, or Steam's own copy
+  link      Replace Steam's runtimes with links to the same builds, importing Steam's copy of a build sruman doesn't have. Steam must not run
+  unlink    Put copies of the builds back in place of the links. Steam must not run
+  verify    Check the builds Steam links to against their file lists
+  clean     Remove builds Steam updated in place and no longer links to
+  relocate  Move Steam's library (to `steam_library`), caches (to `$XDG_CACHE_HOME/steam`) and logs (to `$XDG_STATE_HOME/steam`) out of its folder, leaving links. Steam must not run
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
   -y, --yes
@@ -970,6 +971,35 @@ Remove builds Steam updated in place and no longer links to
 Usage: sruman steam clean [OPTIONS]
 
 Options:
+  -y, --yes
+          Answer every prompt with its default
+
+      --color <WHEN>
+          Colorize the output
+          
+          [possible values: auto, always, never]
+
+  -q, --quiet
+          Less output (`runtimes`: names only)
+
+  -v, --verbose...
+          Log to stderr (-vv: more)
+
+      --config <FILE>
+          Use this config.toml
+
+  -h, --help
+          Print help
+
+===== sruman steam relocate --help
+Move Steam's library (to `steam_library`), caches (to `$XDG_CACHE_HOME/steam`) and logs (to `$XDG_STATE_HOME/steam`) out of its folder, leaving links. Steam must not run
+
+Usage: sruman steam relocate [OPTIONS]
+
+Options:
+      --undo
+          Move them back into Steam's folder instead
+
   -y, --yes
           Answer every prompt with its default
 

@@ -104,6 +104,12 @@ pub struct Dirs {
     pub data_home: PathBuf,
     /// `steam_dir` from `config.toml`, absolute.
     pub steam_dir: Option<PathBuf>,
+    /// `steam_library` from `config.toml`, absolute.
+    pub steam_library: Option<PathBuf>,
+    /// `$XDG_CACHE_HOME` and `$XDG_STATE_HOME`, where `steam relocate`
+    /// puts Steam's caches and logs.
+    pub cache_home: PathBuf,
+    pub state_home: PathBuf,
 }
 
 /// The channel of each runtime.
@@ -220,19 +226,22 @@ impl Settings {
                 expanded
             }
         };
-        let steam_dir = match file.steam_dir.as_deref() {
-            None => None,
+        let absolute = |key, path: Option<&std::path::Path>| match path {
+            None => Ok(None),
             Some(path) => {
                 let expanded = paths::expand_tilde(path, &xdg.home);
-                if !expanded.is_absolute() {
-                    return Err(invalid(
-                        "steam_dir",
+                if expanded.is_absolute() {
+                    Ok(Some(expanded))
+                } else {
+                    Err(invalid(
+                        key,
                         format!("must be absolute or start with `~`, got {}", path.display()),
-                    ));
+                    ))
                 }
-                Some(expanded)
             }
         };
+        let steam_dir = absolute("steam_dir", file.steam_dir.as_deref())?;
+        let steam_library = absolute("steam_library", file.steam_library.as_deref())?;
         let catalog = Catalog::builtin()
             .with_overrides(&file.runtime)
             .map_err(|errors| SettingsError::Catalog {
@@ -312,6 +321,9 @@ impl Settings {
                 prefix_root,
                 data_home: xdg.data_home,
                 steam_dir,
+                steam_library,
+                cache_home: xdg.cache_home,
+                state_home: xdg.state_home,
             },
         })
     }
