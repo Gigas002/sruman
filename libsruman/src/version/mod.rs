@@ -5,6 +5,11 @@
 //! pins a build, in pacman's `name=version` form: `sniper` or
 //! `sniper=3.0.20261021.266025`.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{cmp::Ordering, fmt, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

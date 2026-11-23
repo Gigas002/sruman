@@ -11,6 +11,11 @@
 //! published (the timestamp is unchanged). Builds never change once
 //! published, so a refresh only fetches builds it doesn't know yet.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     collections::{BTreeMap, HashMap},
     fs, io,

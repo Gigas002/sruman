@@ -1,0 +1,6 @@
+# Processes are started in app/supervisor (games, shells) and diag (doctor's
+# tools) only; the few other call sites carry an `expect` with the reason, and
+# docs/AUDIT.md lists them. Nothing runs through a shell (tests/policy.rs).
+disallowed-methods = [
+    { path = "std::process::Command::new", reason = "start processes in app/supervisor or diag; anything else needs an `expect` with a reason (docs/AUDIT.md)" },
+]

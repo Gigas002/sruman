@@ -7,6 +7,11 @@
 //! transaction with earlier items installed, as pacman does. Dependencies
 //! come first, so a failure never leaves a runtime without what it needs.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     collections::BTreeMap,
     fs, io,
@@ -586,7 +591,13 @@ impl Transaction {
                 Ok(Done::Downloaded(path)) => report.downloaded.push(path),
                 Err(e) => {
                     report.failed = Some((item.label(), e));
-                    report.not_attempted = self.items[i + 1..].iter().map(TxItem::label).collect();
+                    report.not_attempted = self
+                        .items
+                        .get(i + 1..)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(TxItem::label)
+                        .collect();
                     break;
                 }
             }

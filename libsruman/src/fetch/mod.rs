@@ -11,6 +11,11 @@
 //! No request carries anything about the user: the User-Agent is
 //! `sruman/<version>` and there are no cookies or credentials.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::io::{self, Read};
 
 #[cfg(feature = "ureq")]

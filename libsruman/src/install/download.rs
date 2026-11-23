@@ -24,6 +24,13 @@ pub enum Fetched {
     Downloaded,
 }
 
+/// The first `n` bytes of `buf`, as a read of `n` filled them; a reader
+/// claiming more than the buffer holds is an error, not a panic.
+pub(crate) fn filled(buf: &[u8], n: usize) -> std::io::Result<&[u8]> {
+    buf.get(..n)
+        .ok_or_else(|| std::io::Error::other("read returned more bytes than the buffer holds"))
+}
+
 fn part_path(dest: &Path) -> PathBuf {
     let mut name = dest.as_os_str().to_owned();
     name.push(".part");
@@ -61,7 +68,7 @@ fn hash_into(
         if n == 0 {
             return Ok(());
         }
-        hasher.update(&buf[..n]);
+        hasher.update(filled(&buf, n).map_err(io_err(format!("reading {}", path.display())))?);
     }
 }
 
@@ -166,8 +173,9 @@ fn download_part(
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
-        file.write_all(&buf[..n])
+        let data = filled(&buf, n).map_err(io_err(format!("reading {url}")))?;
+        hasher.update(data);
+        file.write_all(data)
             .map_err(io_err(format!("writing {}", part.display())))?;
     }
     file.sync_all()

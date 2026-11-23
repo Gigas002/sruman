@@ -134,6 +134,10 @@ pub struct HostLibs {
 
 impl HostLibs {
     /// Runs `ldconfig -p`.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "`ldconfig -p` lists the host's libraries for overlay mode; fixed argv, no shell"
+    )]
     pub fn system() -> Result<Self, OverlayError> {
         let mut last = String::from("not found");
         for program in [

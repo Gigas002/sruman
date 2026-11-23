@@ -1,3 +1,8 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests start fake runtimes and helper processes"
+)]
+
 use std::{fs, io::Write, os::unix::fs::symlink};
 
 use super::*;

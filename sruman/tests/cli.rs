@@ -4,6 +4,11 @@
 //! its argv and env, and `install`/`upgrade --sync` against libsruman's
 //! fixture image server.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "tests start fake runtimes and helper processes"
+)]
+
 #[cfg(feature = "download")]
 #[path = "../../libsruman/tests/support/http.rs"]
 mod http;

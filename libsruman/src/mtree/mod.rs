@@ -6,6 +6,11 @@
 //! `<path> key=value... [flag...]`, with paths octal-escaped (`\040` for a
 //! space, `\176` for `~`).
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     collections::BTreeSet,
     fs,
@@ -171,8 +176,8 @@ fn unescape(text: &str) -> Result<String, String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
+    while let Some(&byte) = bytes.get(i) {
+        if byte == b'\\' {
             let digits = bytes
                 .get(i + 1..i + 4)
                 .filter(|d| d.iter().all(|b| (b'0'..=b'7').contains(b)));
@@ -191,7 +196,7 @@ fn unescape(text: &str) -> Result<String, String> {
             }
             return Err(format!("bad escape in `{text}`"));
         }
-        out.push(bytes[i]);
+        out.push(byte);
         i += 1;
     }
     String::from_utf8(out).map_err(|_| format!("`{text}` is not UTF-8"))
@@ -392,7 +397,11 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
+        hasher.update(
+            buf.get(..n).ok_or_else(|| {
+                io::Error::other("read returned more bytes than the buffer holds")
+            })?,
+        );
     }
     Ok(hex(&hasher.finalize()))
 }

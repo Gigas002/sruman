@@ -291,6 +291,10 @@ pub fn new(
 }
 
 /// Runs `$VISUAL`/`$EDITOR` (else `vi`) on `file`.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "`profiles edit` runs the user's editor; argv split on whitespace, no shell"
+)]
 fn run_editor(app: &App, file: &Path) -> Result<(), AppError> {
     let editor = app.settings.editor.clone().unwrap_or_else(|| "vi".into());
     let mut words = editor.split_whitespace();

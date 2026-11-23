@@ -12,6 +12,11 @@
 //! runs. Only the build holds and the prefix lock from
 //! [`libsruman::launch::LaunchPlan::acquire`] are passed on, on purpose.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the supervisor starts games and shells"
+)]
+
 use std::{
     ffi::OsString,
     fs::File,

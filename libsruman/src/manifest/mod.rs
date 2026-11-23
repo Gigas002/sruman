@@ -4,6 +4,11 @@
 //! sruman uses it the way apt uses its index: `info --packages` lists packages,
 //! upgrades show which packages change, and `search --packages` searches them.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{collections::BTreeMap, fmt};
 
 #[cfg(test)]

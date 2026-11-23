@@ -2,6 +2,11 @@
 //! Steam's `steamapps/common/SteamLinuxRuntime_sniper` or umu's
 //! `steamrt3`, by copying it into the store or linking it in place.
 
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 use std::{
     fs, io,
     os::unix::fs::{PermissionsExt, symlink},

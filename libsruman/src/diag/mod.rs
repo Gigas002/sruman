@@ -10,6 +10,11 @@
 //!
 //! Every check returns [`Finding`]s; the caller prints them.
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "doctor runs the runtimes' diagnostic tools"
+)]
+
 use std::{
     fmt,
     io::{self, Read},
