@@ -1,15 +1,15 @@
 use std::{io, time::Duration};
 
 use ureq::{
-    Agent,
-    http::{HeaderMap, StatusCode, header},
+    Agent, ResponseExt,
+    http::{HeaderMap, StatusCode, Uri, header},
 };
 
 use super::{Body, Fetch, FetchError, Head, USER_AGENT, parse_content_range};
 
 /// [`Fetch`] on a `ureq` agent: rustls, the system proxy from the
-/// environment, up to 5 redirects, and a stall timeout instead of an overall
-/// one (archives are hundreds of MiB).
+/// environment, up to 5 redirects (never from HTTPS to plain HTTP), and a
+/// stall timeout instead of an overall one (archives are hundreds of MiB).
 #[derive(Debug, Clone)]
 pub struct UreqFetch {
     agent: Agent,
@@ -28,6 +28,7 @@ impl UreqFetch {
             .user_agent(USER_AGENT)
             .http_status_as_error(false)
             .max_redirects(5)
+            .save_redirect_history(true)
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_recv_response(Some(Duration::from_secs(60)))
             .timeout_per_read(Some(Duration::from_secs(60)))
@@ -45,6 +46,34 @@ fn transport(url: &str) -> impl FnOnce(ureq::Error) -> FetchError {
     }
 }
 
+/// Whether a request for `url` went through plain HTTP although it started
+/// on HTTPS: a redirect that would let anyone on the path change the files
+/// (the archive and the `SHA256SUMS` it's checked against alike).
+pub(super) fn downgraded(url: &str, history: &[Uri]) -> bool {
+    url.starts_with("https://")
+        && history.iter().any(|uri| {
+            uri.scheme_str()
+                .is_none_or(|s| !s.eq_ignore_ascii_case("https"))
+        })
+}
+
+/// Refuses a response that was redirected from HTTPS to HTTP.
+fn check_downgrade(
+    url: &str,
+    response: &ureq::http::Response<ureq::Body>,
+) -> Result<(), FetchError> {
+    match response.get_redirect_history() {
+        Some(history) if downgraded(url, history) => Err(FetchError::BadResponse {
+            url: url.to_owned(),
+            message: format!(
+                "redirected from HTTPS to plain HTTP ({}); refusing it",
+                response.get_uri()
+            ),
+        }),
+        _ => Ok(()),
+    }
+}
+
 fn header_str(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
     headers.get(name)?.to_str().ok()
 }
@@ -59,6 +88,7 @@ fn content_length(headers: &HeaderMap) -> Option<u64> {
 impl Fetch for UreqFetch {
     fn head(&self, url: &str) -> Result<Head, FetchError> {
         let response = self.agent.head(url).call().map_err(transport(url))?;
+        check_downgrade(url, &response)?;
         let status = response.status();
         if !status.is_success() {
             return Err(FetchError::Status {
@@ -79,6 +109,7 @@ impl Fetch for UreqFetch {
             request = request.header(header::RANGE, format!("bytes={offset}-"));
         }
         let response = request.call().map_err(transport(url))?;
+        check_downgrade(url, &response)?;
         let status = response.status();
         let headers = response.headers().clone();
         let bad = |message: String| FetchError::BadResponse {

@@ -195,6 +195,38 @@ mod ureq {
     }
 
     #[test]
+    fn https_to_http_redirects_count_as_downgrades() {
+        use super::super::ureq_fetch::downgraded;
+        let uris = |list: &[&str]| -> Vec<::ureq::http::Uri> {
+            list.iter().map(|u| u.parse().unwrap()).collect()
+        };
+        let https = "https://repo.example/a";
+        assert!(!downgraded(https, &uris(&[https])));
+        assert!(!downgraded(
+            https,
+            &uris(&[https, "https://mirror.example/a"])
+        ));
+        assert!(downgraded(
+            https,
+            &uris(&[https, "http://mirror.example/a"])
+        ));
+        // Back to HTTPS after a plain hop still went through HTTP.
+        assert!(downgraded(
+            https,
+            &uris(&[https, "http://x.example/a", "https://y.example/a"])
+        ));
+        assert!(downgraded(
+            "HTTPS://repo.example/a".to_lowercase().as_str(),
+            &uris(&[https, "HTTP://m.example/a"])
+        ));
+        // A plain-HTTP server (a local mirror, the test server) is the user's choice.
+        assert!(!downgraded(
+            "http://127.0.0.1/a",
+            &uris(&["http://127.0.0.1/a", "http://127.0.0.1/b"])
+        ));
+    }
+
+    #[test]
     fn redirects_are_followed() {
         let server = Server::start();
         server.put_bytes("/real", "x");
