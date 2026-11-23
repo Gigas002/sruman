@@ -1282,7 +1282,13 @@ before the binary, and Phase 4's commands get modes for free.
       damaged copy left alone, unlink, a foreign link refused.
       _Done 2026-11-23._
 - [x] **5b.3** `steam relocate [--undo]` and `steam_library` (D18); the
-      folders in `steam status`. _Done 2026-11-23._
+      folders in `steam status`. _Done 2026-11-23. Checked on a reflink
+      copy of a real Steam (14 GiB, with a game) under a throwaway `HOME`:
+      relocated, Steam starts, verifies, logs in and keeps the links (no
+      folder made again at home); `libraryfolders.vdf` unchanged, one
+      library, the game still installed (`StateFlags` 4); caches, logs and
+      the library get Steam's writes in their new places; `--undo`, and
+      Steam starts the same again.
 - [ ] **5b.2** A game launched by Steam on the linked runtimes (blocked on
       2026-11-23: the only installed game was family-shared and locked).
 
