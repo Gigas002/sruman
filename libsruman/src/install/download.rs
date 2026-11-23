@@ -95,7 +95,7 @@ pub fn download(
         fs::remove_file(dest).map_err(io_err(format!("removing {}", dest.display())))?;
     }
     if let Some(dir) = dest.parent() {
-        fs::create_dir_all(dir).map_err(io_err(format!("creating {}", dir.display())))?;
+        crate::paths::private_dir(dir).map_err(io_err(format!("creating {}", dir.display())))?;
     }
     let part = part_path(dest);
     for attempt in 0..2 {

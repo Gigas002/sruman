@@ -195,6 +195,32 @@ mod ureq {
     }
 
     #[test]
+    fn a_stalled_connection_times_out_instead_of_hanging() {
+        let server = Server::start();
+        let data = vec![7u8; 4096];
+        for (path, stall) in [("/headers", 0), ("/body", 1000)] {
+            server.put(
+                path,
+                File {
+                    stall_after: Some(stall),
+                    ..File::new(data.clone())
+                },
+            );
+        }
+        let fetch = UreqFetch::with_stall_timeout(std::time::Duration::from_millis(300));
+        for path in ["/headers", "/body"] {
+            let started = std::time::Instant::now();
+            let result = fetch.get(&server.url(path), 1 << 20);
+            assert!(result.is_err(), "{path}: {result:?}");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(3),
+                "{path} took {:?}",
+                started.elapsed()
+            );
+        }
+    }
+
+    #[test]
     fn https_to_http_redirects_count_as_downgrades() {
         use super::super::ureq_fetch::downgraded;
         let uris = |list: &[&str]| -> Vec<::ureq::http::Uri> {

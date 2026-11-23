@@ -24,14 +24,19 @@ impl Default for UreqFetch {
 impl UreqFetch {
     /// A client with sruman's user agent and timeouts.
     pub fn new() -> Self {
+        Self::with_stall_timeout(Duration::from_secs(60))
+    }
+
+    /// [`UreqFetch::new`] giving up after `stall` without data (60 s there).
+    pub fn with_stall_timeout(stall: Duration) -> Self {
         let config = Agent::config_builder()
             .user_agent(USER_AGENT)
             .http_status_as_error(false)
             .max_redirects(5)
             .save_redirect_history(true)
             .timeout_connect(Some(Duration::from_secs(20)))
-            .timeout_recv_response(Some(Duration::from_secs(60)))
-            .timeout_per_read(Some(Duration::from_secs(60)))
+            .timeout_recv_response(Some(stall))
+            .timeout_per_read(Some(stall))
             .build();
         Self {
             agent: config.into(),

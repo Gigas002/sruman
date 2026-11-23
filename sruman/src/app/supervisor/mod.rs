@@ -419,14 +419,8 @@ fn acquire_error(err: LaunchError) -> AppError {
 
 /// An exclusive lock per game while it starts.
 fn game_lock(locks: &Path, game: &str) -> Result<File, AppError> {
-    std::fs::create_dir_all(locks)
-        .map_err(|e| AppError::Failed(format!("{}: {e}", locks.display())))?;
     let path = locks.join(format!("game-{game}.lock"));
-    let file = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&path)
+    let file = libsruman::paths::lock_file(&path)
         .map_err(|e| AppError::Failed(format!("{}: {e}", path.display())))?;
     match file.try_lock() {
         Ok(()) => Ok(file),

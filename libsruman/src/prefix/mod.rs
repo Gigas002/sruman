@@ -15,7 +15,7 @@
 
 use std::{
     collections::BTreeMap,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io,
     os::fd::{AsFd, BorrowedFd, OwnedFd},
     path::{Path, PathBuf},
@@ -188,13 +188,7 @@ pub fn lock_path(lock_dir: &Path, prefix: &Path) -> PathBuf {
 pub fn lock(lock_dir: &Path, prefix: &Path, exclusive: bool) -> Result<PrefixLock, PrefixError> {
     let path = lock_path(lock_dir, prefix);
     let context = || format!("locking {}", path.display());
-    fs::create_dir_all(lock_dir).map_err(io_err(context()))?;
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&path)
-        .map_err(io_err(context()))?;
+    let file = crate::paths::lock_file(&path).map_err(io_err(context()))?;
     let result = if exclusive {
         file.try_lock()
     } else {

@@ -6,6 +6,9 @@
 
 use std::{
     ffi::OsString,
+    fs::{self, DirBuilder, File, OpenOptions},
+    io,
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 
@@ -14,6 +17,50 @@ mod tests;
 
 /// Directory name used under every XDG base directory.
 pub const APP_NAME: &str = "sruman";
+
+/// Creates `dir` and its missing parents as `0700`, and checks that `dir`
+/// belongs to the current user and isn't writable by anyone else: sruman
+/// keeps its locks, logs, cache and runtimes there, so someone else's
+/// directory (a planted `$XDG_RUNTIME_DIR/sruman`) is refused. Existing
+/// directories keep their mode.
+pub fn private_dir(dir: &Path) -> io::Result<()> {
+    DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    let meta = fs::metadata(dir)?;
+    let uid = rustix::process::geteuid().as_raw();
+    if meta.uid() != uid {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} belongs to uid {}, not to you (uid {uid}); remove it or fix its owner",
+                dir.display(),
+                meta.uid()
+            ),
+        ));
+    }
+    if meta.permissions().mode() & 0o022 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} is writable by other users; `chmod go-w` it",
+                dir.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Opens (creating as `0600`) the lock file `path`, in a [`private_dir`].
+pub fn lock_file(path: &Path) -> io::Result<File> {
+    if let Some(dir) = path.parent() {
+        private_dir(dir)?;
+    }
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(path)
+}
 
 /// Errors from finding the user's directories.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

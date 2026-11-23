@@ -279,14 +279,8 @@ impl Store {
     /// Takes the store lock without waiting (pacman's `db.lck`) and wipes
     /// leftovers of interrupted operations.
     pub fn lock(&self) -> Result<StoreLock, StoreError> {
-        fs::create_dir_all(&self.root).map_err(io_err(&self.root))?;
         let path = self.root.join(LOCK_FILE);
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-            .map_err(io_err(&path))?;
+        let file = crate::paths::lock_file(&path).map_err(io_err(&path))?;
         match file.try_lock() {
             Ok(()) => {}
             Err(fs::TryLockError::WouldBlock) => return Err(StoreError::Busy(path)),

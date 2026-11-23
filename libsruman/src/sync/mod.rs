@@ -190,7 +190,7 @@ impl SyncDir {
 
 fn write_atomic(path: &Path, data: &[u8]) -> Result<(), SyncError> {
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(io_err(dir))?;
+        crate::paths::private_dir(dir).map_err(io_err(dir))?;
     }
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     fs::write(&tmp, data)

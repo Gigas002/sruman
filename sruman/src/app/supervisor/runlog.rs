@@ -42,7 +42,7 @@ impl RunKind<'_> {
 /// most `keep` logs counting the new one, and points `latest.log` at it.
 pub fn create(logs: &Path, kind: RunKind, stamp: &str, keep: usize) -> io::Result<(File, PathBuf)> {
     let dir = kind.dir(logs);
-    std::fs::create_dir_all(&dir)?;
+    libsruman::paths::private_dir(&dir)?;
     prune(&dir, keep.saturating_sub(1))?;
     // After the newest log of this second, never in a gap left by pruning.
     let first = list(&dir)?

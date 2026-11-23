@@ -25,6 +25,9 @@ pub struct File {
     pub cut_after: Option<usize>,
     /// Answer with a 302 to this path instead.
     pub redirect: Option<String>,
+    /// Send the headers and this many body bytes, then hang (keep the
+    /// connection open, send nothing) for a few seconds.
+    pub stall_after: Option<usize>,
 }
 
 impl File {
@@ -177,6 +180,12 @@ fn serve(stream: TcpStream, state: &Mutex<State>) -> std::io::Result<()> {
         body.len()
     )?;
     if method == "HEAD" {
+        return Ok(());
+    }
+    if let Some(stall) = file.stall_after {
+        out.write_all(&body[..stall.min(body.len())])?;
+        out.flush()?;
+        thread::sleep(std::time::Duration::from_secs(5));
         return Ok(());
     }
     let body = match file.cut_after {
