@@ -166,8 +166,129 @@ fn a_link_elsewhere_is_left_alone() {
         w.steam.relocate(&place).unwrap_err(),
         w.steam.unrelocate(&place).unwrap_err(),
     ] {
-        assert!(matches!(err, SteamError::Foreign { .. }), "{err}");
+        assert!(matches!(err, SteamError::Relocated { .. }), "{err}");
     }
+}
+
+#[test]
+fn moved_with_other_settings_says_so() {
+    let mut w = World::new();
+    let place = w.place("appcache");
+    w.steam.relocate(&place).unwrap();
+    w.targets.cache = w.tmp.path().join("other-cache");
+    let err = w.steam.relocate(&w.place("appcache")).unwrap_err();
+    assert!(err.to_string().contains("--undo"), "{err}");
+    assert!(matches!(err, SteamError::Relocated { .. }), "{err}");
+}
+
+#[test]
+fn a_target_inside_the_folder_is_refused() {
+    let mut w = World::new();
+    w.targets.library = Some(w.steam.root().join("steamapps/common/x/.."));
+    let err = w.steam.relocate(&w.place("library")).unwrap_err();
+    assert!(matches!(err, SteamError::Nested { .. }), "{err}");
+    // Or Steam's own root as the library: the target is the folder itself.
+    w.targets.library = Some(w.steam.root().to_path_buf());
+    let err = w.steam.relocate(&w.place("library")).unwrap_err();
+    assert!(matches!(err, SteamError::Nested { .. }), "{err}");
+    assert_eq!(w.place("library").placed(), Placed::Here);
+}
+
+#[test]
+fn moved_folders_stay_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let w = World::new();
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    fs::set_permissions(w.steam.root(), fs::Permissions::from_mode(0o700)).unwrap();
+    for place in w.places() {
+        w.steam.relocate(&place).unwrap();
+        assert_eq!(mode(&place.target), 0o700, "{}", place.name);
+    }
+    assert_eq!(mode(&w.targets.cache), 0o700);
+    assert_eq!(mode(w.targets.library.as_ref().unwrap()), 0o700);
+    // A Steam folder others may read lets the moved folders be read too.
+    let w = World::new();
+    fs::set_permissions(w.steam.root(), fs::Permissions::from_mode(0o755)).unwrap();
+    let place = w.place("logs");
+    fs::set_permissions(&place.path, fs::Permissions::from_mode(0o755)).unwrap();
+    w.steam.relocate(&place).unwrap();
+    assert_eq!(mode(&place.target), 0o755);
+}
+
+/// Runs a copy of bash as `exe`, in `dir`, waiting. (coreutils may be one
+/// binary that goes by its own name, so `sleep` can't be renamed.)
+fn sleeper(exe: &Path, dir: &Path) -> std::process::Child {
+    let bash = ["/usr/bin/bash", "/bin/bash"]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .unwrap();
+    fs::create_dir_all(exe.parent().unwrap()).unwrap();
+    fs::copy(bash, exe).unwrap();
+    let script = exe.with_extension("sh");
+    // A builtin, so there's no child process to outlive bash.
+    fs::write(&script, "read -t 30\n").unwrap();
+    let _spawn = crate::test_lock::spawns();
+    #[allow(clippy::disallowed_methods)]
+    std::process::Command::new(exe)
+        .arg(&script)
+        .stdin(std::process::Stdio::piped())
+        .current_dir(dir)
+        .spawn()
+        .unwrap()
+}
+
+#[test]
+fn a_folder_in_use_is_refused() {
+    let w = World::new();
+    let place = w.place("library");
+    let dir = place.path.join("common/Game");
+    let mut child = sleeper(&w.tmp.path().join("bin/game"), &dir);
+    let err = w.steam.relocate(&place).unwrap_err();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(
+        matches!(err, SteamError::Busy { ref name, .. } if name == "game"),
+        "{err}"
+    );
+    assert_eq!(place.placed(), Placed::Here);
+    // And back: a process in the moved folder blocks the undo.
+    w.steam.relocate(&place).unwrap();
+    let mut child = sleeper(&w.tmp.path().join("bin/game"), &place.target);
+    let err = w.steam.unrelocate(&place).unwrap_err();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(matches!(err, SteamError::Busy { .. }), "{err}");
+}
+
+#[test]
+fn a_steam_from_this_root_counts_as_running() {
+    let w = World::new();
+    let root = w.steam.root().to_path_buf();
+    let mut child = sleeper(&root.join("ubuntu12_32/steam"), w.tmp.path());
+    let running = w.steam.running();
+    let other = Steam::at(w.tmp.path().join("other"), w.tmp.path().join("none.pid"));
+    let other_running = other.running();
+    let err = w.steam.relocate(&w.place("logs")).unwrap_err();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(running && !other_running);
+    assert!(matches!(err, SteamError::Running), "{err}");
+}
+
+#[test]
+fn the_pid_file_of_the_roots_home_counts() {
+    let w = World::new();
+    let home = w.tmp.path().join("home");
+    let root = home.join(".local/share/Steam");
+    fs::create_dir_all(&root).unwrap();
+    let mut child = sleeper(&w.tmp.path().join("bin/steam"), w.tmp.path());
+    fs::create_dir_all(home.join(".steam")).unwrap();
+    fs::write(home.join(".steam/steam.pid"), child.id().to_string()).unwrap();
+    let steam = Steam::at(&root, w.tmp.path().join("none.pid"));
+    let running = steam.running();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(running);
 }
 
 #[test]

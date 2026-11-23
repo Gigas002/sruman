@@ -12,10 +12,13 @@ impl From<SteamError> for AppError {
         match err {
             SteamError::Store(err) => err.into(),
             SteamError::Import(err) => err.into(),
-            SteamError::Running | SteamError::InUse(_) => Self::Busy(err.to_string()),
-            SteamError::Foreign { .. } | SteamError::TargetExists(_) => {
-                Self::Invalid(err.to_string())
+            SteamError::Running | SteamError::InUse(_) | SteamError::Busy { .. } => {
+                Self::Busy(err.to_string())
             }
+            SteamError::Foreign { .. }
+            | SteamError::TargetExists(_)
+            | SteamError::Relocated { .. }
+            | SteamError::Nested { .. } => Self::Invalid(err.to_string()),
             SteamError::Io { .. } | SteamError::Damaged { .. } => Self::Failed(err.to_string()),
         }
     }
@@ -125,6 +128,21 @@ struct PlaceRow {
     link: Option<String>,
 }
 
+/// Where Steam's `steamapps` links to when `steam_library` isn't set: a
+/// library moved before the key was removed, or linked by hand. sruman
+/// shows it but doesn't move it.
+fn unmanaged_library(app: &App, steam: &Steam) -> Option<std::path::PathBuf> {
+    if app.settings.dirs.steam_library.is_some() {
+        return None;
+    }
+    let path = steam.root().join("steamapps");
+    let meta = std::fs::symlink_metadata(&path).ok()?;
+    meta.file_type()
+        .is_symlink()
+        .then(|| std::fs::read_link(&path).ok())
+        .flatten()
+}
+
 fn place_row(place: &Place) -> PlaceRow {
     let (state, link) = match place.placed() {
         Placed::Moved => ("moved", None),
@@ -158,7 +176,20 @@ pub fn status(app: &mut App) -> Result<u8, AppError> {
         .iter()
         .map(|slot| row(app, slot))
         .collect::<Result<Vec<_>, _>>()?;
-    let places: Vec<PlaceRow> = steam.places(&targets(app)).iter().map(place_row).collect();
+    let mut places: Vec<PlaceRow> = steam.places(&targets(app)).iter().map(place_row).collect();
+    let unmanaged = unmanaged_library(app, &steam);
+    if let Some(link) = &unmanaged {
+        places.insert(
+            0,
+            PlaceRow {
+                name: "library",
+                path: steam.root().join("steamapps").display().to_string(),
+                target: link.display().to_string(),
+                state: "unset",
+                link: Some(link.display().to_string()),
+            },
+        );
+    }
     #[cfg(feature = "json")]
     if app.out.json {
         app.out.json(&Status {
@@ -210,6 +241,10 @@ pub fn status(app: &mut App) -> Result<u8, AppError> {
             "moved" => (app.out.green("moved"), place.target.clone()),
             "here" => (app.out.yellow("in Steam's folder"), place.path.clone()),
             "missing" => ("not there yet".to_owned(), place.path.clone()),
+            "unset" => (
+                app.out.yellow("moved (`steam_library` unset)"),
+                place.target.clone(),
+            ),
             _ => (
                 app.out.red("links elsewhere"),
                 place.link.clone().unwrap_or_default(),
@@ -226,7 +261,7 @@ pub fn status(app: &mut App) -> Result<u8, AppError> {
         app.out
             .note("`sruman steam relocate` moves the folders out of Steam's")?;
     }
-    if app.settings.dirs.steam_library.is_none() {
+    if app.settings.dirs.steam_library.is_none() && unmanaged.is_none() {
         app.out
             .note("set `steam_library` in config.toml to move the library too")?;
     }
@@ -273,9 +308,15 @@ pub fn relocate(app: &mut App, undo: bool) -> Result<u8, AppError> {
             }
         }
     }
-    if !undo && app.settings.dirs.steam_library.is_none() {
-        app.out
-            .note("the library stays: set `steam_library` in config.toml to move it")?;
+    match unmanaged_library(app, &steam) {
+        Some(link) => app.out.note(format!(
+            "the library stays at {}: `steam_library` isn't set, so sruman leaves it alone",
+            link.display()
+        ))?,
+        None if !undo && app.settings.dirs.steam_library.is_none() => app
+            .out
+            .note("the library stays: set `steam_library` in config.toml to move it")?,
+        None => {}
     }
     if code == 0 {
         Ok(0)

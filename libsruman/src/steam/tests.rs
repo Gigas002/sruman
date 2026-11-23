@@ -117,6 +117,36 @@ fn library_paths_unescape_backslashes() {
 }
 
 #[test]
+fn relative_library_paths_are_ignored() {
+    assert_eq!(
+        library_paths("\"path\"\t\"games\"\n\"path\"\t\"/games\"\n"),
+        [PathBuf::from("/games")]
+    );
+}
+
+#[test]
+fn a_library_under_two_names_is_listed_once() {
+    let w = World::new();
+    // The root's steamapps moved into a folder Steam also lists.
+    let moved = w.tmp.path().join("games");
+    fs::create_dir_all(&moved).unwrap();
+    let root = w.steam.root();
+    fs::rename(root.join("steamapps"), moved.join("steamapps")).unwrap();
+    symlink(moved.join("steamapps"), root.join("steamapps")).unwrap();
+    fs::write(
+        root.join("steamapps/libraryfolders.vdf"),
+        format!(
+            "\"path\"\t\"{}\"\n\"path\"\t\"{}\"\n",
+            root.display(),
+            moved.display()
+        ),
+    )
+    .unwrap();
+    let runtimes: Vec<_> = w.steam.slots().into_iter().map(|s| s.runtime).collect();
+    assert_eq!(runtimes, ["steamrt3c", "steamrt4"]);
+}
+
+#[test]
 fn link_takes_over_steams_copy() {
     let w = World::new();
     let slot = w.slot("steamrt4");

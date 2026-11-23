@@ -1289,8 +1289,11 @@ before the binary, and Phase 4's commands get modes for free.
       library, the game still installed (`StateFlags` 4); caches, logs and
       the library get Steam's writes in their new places; `--undo`, and
       Steam starts the same again.
-- [ ] **5b.2** A game launched by Steam on the linked runtimes (blocked on
-      2026-11-23: the only installed game was family-shared and locked).
+- [x] **5b.2** A game launched by Steam on the linked runtimes. _Done
+      2026-11-23:_ Muse Dash (dwproton, `require_tool_appid` steamrt4),
+      started from Steam's client running on the linked steamrt3c, ran in a
+      pressure-vessel container from sruman's steamrt4 build (Direct3D 11 on
+      the GPU, online), and closed cleanly; `steam verify` passed after.
 
 ### Phase 6 — custom runtimes (after 0.1.0; D16)
 

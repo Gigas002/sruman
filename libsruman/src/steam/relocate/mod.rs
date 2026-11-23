@@ -5,11 +5,11 @@
 
 use std::{
     fs, io,
-    os::unix::fs::symlink,
-    path::{Path, PathBuf},
+    os::unix::fs::{DirBuilderExt, PermissionsExt, symlink},
+    path::{Component, Path, PathBuf},
 };
 
-use super::{Steam, SteamError, io_err, remove_any, staging_path};
+use super::{Steam, SteamError, busy, io_err, remove_any, staging_path};
 use crate::store::import;
 
 #[cfg(test)]
@@ -115,38 +115,69 @@ impl Steam {
     /// missing one gets the link (and an empty target) right away, so Steam
     /// never makes it in its own folder. `false` when it was moved already.
     /// A target that exists and isn't empty is refused, unless Steam's
-    /// folder is missing (a move cut short): then it's only linked.
+    /// folder is missing (a move cut short): then it's only linked. So is
+    /// a folder a process uses, and a target inside the folder (or the
+    /// other way round).
+    ///
+    /// Steam's folder is private (`0700`) while what's in it isn't, so
+    /// folders sruman makes for a target are private, and the moved folder
+    /// loses the permissions Steam's folder didn't give.
     pub fn relocate(&self, place: &Place) -> Result<bool, SteamError> {
         if self.running() {
             return Err(SteamError::Running);
         }
-        match place.placed() {
+        let placed = place.placed();
+        if matches!(placed, Placed::Here | Placed::Missing) {
+            let (path, target) = (resolve(&place.path), resolve(&place.target));
+            if path.starts_with(&target) || target.starts_with(&path) {
+                return Err(SteamError::Nested {
+                    path: place.path.clone(),
+                    target: place.target.clone(),
+                });
+            }
+        }
+        match placed {
             Placed::Moved => return Ok(false),
             Placed::Elsewhere(target) => {
-                return Err(SteamError::Foreign {
+                return Err(SteamError::Relocated {
                     path: place.path.clone(),
                     target,
+                    wanted: place.target.clone(),
                 });
             }
             Placed::Missing => {
-                fs::create_dir_all(&place.target).map_err(io_err(&place.target))?;
+                private_dirs(&place.target)?;
             }
             Placed::Here => {
                 if !is_empty_or_missing(&place.target)? {
                     return Err(SteamError::TargetExists(place.target.clone()));
                 }
+                not_busy(&place.path)?;
                 remove_any(&place.target)?;
                 if let Some(parent) = place.target.parent() {
-                    fs::create_dir_all(parent).map_err(io_err(parent))?;
+                    private_dirs(parent)?;
                 }
                 move_dir(&place.path, &place.target)?;
             }
         }
+        self.keep_private(&place.target)?;
         if let Some(parent) = place.path.parent() {
             fs::create_dir_all(parent).map_err(io_err(parent))?;
         }
         symlink(&place.target, &place.path).map_err(io_err(&place.path))?;
         Ok(true)
+    }
+
+    /// Takes from `dir` the permissions Steam's root doesn't give.
+    fn keep_private(&self, dir: &Path) -> Result<(), SteamError> {
+        let root = fs::metadata(&self.root).map_err(io_err(&self.root))?;
+        let denied = 0o077 & !root.permissions().mode();
+        let meta = fs::metadata(dir).map_err(io_err(dir))?;
+        let mode = meta.permissions().mode();
+        if mode & denied == 0 {
+            return Ok(());
+        }
+        fs::set_permissions(dir, fs::Permissions::from_mode(mode & !denied)).map_err(io_err(dir))
     }
 
     /// Moves `place` back into Steam's folder in place of the link. `false`
@@ -158,12 +189,16 @@ impl Steam {
         match place.placed() {
             Placed::Here | Placed::Missing => return Ok(false),
             Placed::Elsewhere(target) => {
-                return Err(SteamError::Foreign {
+                return Err(SteamError::Relocated {
                     path: place.path.clone(),
                     target,
+                    wanted: place.target.clone(),
                 });
             }
             Placed::Moved => {}
+        }
+        if fs::symlink_metadata(&place.target).is_ok() {
+            not_busy(&place.target)?;
         }
         fs::remove_file(&place.path).map_err(io_err(&place.path))?;
         if fs::symlink_metadata(&place.target).is_ok() {
@@ -172,6 +207,63 @@ impl Steam {
             fs::create_dir(&place.path).map_err(io_err(&place.path))?;
         }
         Ok(true)
+    }
+}
+
+/// `path` with its symlinks resolved as far as it exists, and `..` taken
+/// out of the rest.
+fn resolve(path: &Path) -> PathBuf {
+    let mut existing = path;
+    let mut rest = Vec::new();
+    let base = loop {
+        if let Ok(real) = fs::canonicalize(existing) {
+            break real;
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                existing = parent;
+            }
+            _ => break existing.to_path_buf(),
+        }
+    };
+    let mut out = base;
+    for name in rest.iter().rev() {
+        out.push(name);
+    }
+    let mut clean = PathBuf::new();
+    for part in out.components() {
+        match part {
+            Component::ParentDir => {
+                clean.pop();
+            }
+            Component::CurDir => {}
+            other => clean.push(other),
+        }
+    }
+    clean
+}
+
+/// Creates `dir` and its missing parents, private (`0700`).
+fn private_dirs(dir: &Path) -> Result<(), SteamError> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+        .map_err(io_err(dir))
+}
+
+/// Refuses a folder a process has files open in (a game started without
+/// Steam, a shell in it): moving it under the process loses its writes.
+fn not_busy(dir: &Path) -> Result<(), SteamError> {
+    let real = fs::canonicalize(dir).map_err(io_err(dir))?;
+    match busy(&real) {
+        Some((pid, name)) => Err(SteamError::Busy {
+            path: dir.to_path_buf(),
+            pid,
+            name,
+        }),
+        None => Ok(()),
     }
 }
 

@@ -56,11 +56,12 @@ fn texty() -> impl Strategy<Value = String> {
 }
 
 fn build_id() -> impl Strategy<Value = BuildId> {
-    prop::collection::vec(0u64..1_000_000_000, 1..6)
+    // Parts may carry a lowercase suffix, as the client runtime's `3c`.
+    prop::collection::vec((0u64..1_000_000_000, "[a-c]{0,1}"), 1..6)
         .prop_map(|parts| {
             parts
                 .iter()
-                .map(u64::to_string)
+                .map(|(n, suffix)| format!("{n}{suffix}"))
                 .collect::<Vec<_>>()
                 .join(".")
         })

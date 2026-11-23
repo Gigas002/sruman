@@ -18,6 +18,12 @@ All notable changes to this project will be documented in this file.
   `~/.local/state/steam`) move out of its folder, with links left behind.
   `steam status` lists where they are, and its `--json` is now an object
   with `runtimes` and `places`.
+  `relocate` refuses folders a process has open and targets inside the
+  folder, keeps moved folders as private as Steam's own, and with
+  `steam_library` removed after a move shows the library and leaves it.
+- `sruman steam` sees a Steam started with another `HOME` (a Flatpak) as
+  running, ignores relative paths in `libraryfolders.vdf`, and lists a
+  library listed twice under two names once.
 - The `steamrt3c` runtime, the one Steam's 64-bit client runs in.
 
 ### Changed

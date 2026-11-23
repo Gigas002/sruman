@@ -693,6 +693,24 @@ fn steam_relocate_and_back() {
     let (out, _) = expect(&s.run(&["steam", "relocate"]), 0);
     assert_eq!(out, "");
 
+    // With the key gone, the moved library is shown and left alone.
+    s.write_config("config.toml", "");
+    let (out, err) = expect(&s.run(&["steam", "status"]), 0);
+    assert!(out.contains("`steam_library` unset"), "{out}");
+    assert!(!err.contains("set `steam_library`"), "{err}");
+    let (out, err) = expect(&s.run(&["steam", "relocate", "--undo"]), 0);
+    assert!(!out.contains("library"), "{out}");
+    assert!(err.contains("the library stays at"), "{err}");
+    assert!(
+        fs::symlink_metadata(root.join("steamapps"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    s.write_config(
+        "config.toml",
+        &format!("steam_library = \"{}\"\n", library.display()),
+    );
     let (out, _) = expect(&s.run(&["steam", "relocate", "--undo"]), 0);
     assert!(
         out.ends_with(

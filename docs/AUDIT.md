@@ -213,3 +213,37 @@ archive, unstripped binaries).
 | Real server | `SRUMAN_REAL_INSTALL=scout cargo test -p libsruman --test real_server -- --ignored` | — |
 | Size | `cargo build --release -p sruman [--no-default-features]`, `cargo tree -e normal` | — |
 | Startup, install memory, launch | by hand with the release binary (§2); no stable CI timing | — |
+
+## 6. Follow-up pass: Steam (2026-11-23)
+
+Covers what came after the release: `steamrt3c` and its letter-suffixed
+build ids, `sruman steam status|link|unlink|verify|clean` (D17), `clean` and
+`remove` keeping Steam's builds, and `sruman steam relocate` (D18). The new
+code was read for where outside input (Steam's files, `libraryfolders.vdf`,
+`/proc`, the settings) becomes a path, a rename, a deletion or a decision
+that Steam is stopped. Checked for real: Steam linked to sruman's four
+runtimes through several of your sessions (`steam verify` clean), a game
+launched by Steam on them (PLAN 5b.2), and `relocate` and `--undo` on a
+copy of a real Steam with Steam started after each (PLAN 5b.3). Gates green
+at the three feature levels (221, 290 and 290 tests); `cargo deny check`
+passes.
+
+| Area | Finding | Severity | Status |
+| ---- | ------- | -------- | ------ |
+| Relocated folders' permissions | Steam's folder is `0700`, and it is what keeps its contents private: `compatdata` (Proton prefixes), `logs`, `config/htmlcache` (the web views' cache) are `0755` inside it. Moved out, they sat under `~/.local/state` (`0755` here) or a new library folder, readable by other users wherever the home folder isn't private. Folders sruman makes for a target are `0700` now, and a moved folder loses the permissions Steam's folder didn't give. | medium | Fixed |
+| Relocating a folder in use | Nothing stopped `relocate` (or `--undo`) while a game ran from the library without Steam, as gaki can run one, or a shell sat in a cache. Across filesystems, the copy would miss what the game wrote after it, and then the original was deleted. A folder a process of yours has open, mapped, or as its working folder or executable is refused now (exit 4, naming the process). Games in pressure-vessel containers show their host paths, so they're seen too. | medium | Fixed |
+| Steam started with another `HOME` | "Steam is running" came only from `~/.steam/steam.pid`. A Steam with another `HOME` (a Flatpak one, which has its own `.steam`, or a test `HOME`) wasn't seen, so `link`, `unlink` and `relocate` would act under a running Steam. Now the pid file of the home Steam's root belongs to counts too, and so does any `steam` process of yours running from that root. | medium | Fixed |
+| Library moved with other settings | A folder that links somewhere other than its current target (say `steam_library` changed after a move) got the runtime error "links to …, not to a build sruman has". It says what happened and how to undo it now. | low | Fixed |
+| Target inside the folder | `steam_library` set to Steam's own root, or to a folder inside `steamapps`, failed with an unhelpful rename or "isn't empty" error. It's refused up front with a clear message. | low | Fixed |
+| `steam_library` removed after a move | Without the key, a moved library vanished from `status`, and `--undo` said nothing about it. `status` shows it as moved with the key unset, and `--undo` says it stays; sruman doesn't move a library it wasn't told about (it may have been linked by hand). | low | Fixed |
+| `libraryfolders.vdf` | A relative `path` would have been taken from sruman's working folder; only absolute ones count now. A library listed twice under two names (the root's moved `steamapps` also added in Steam) was listed twice; once now. | low | Fixed |
+| Letter-suffixed build ids | `3c.0.…` sorts by its numbers with the text breaking ties, so the order stays total and consistent with `Eq`; the property tests now generate suffixes. | — | OK |
+| Swaps | `link` and `unlink` swap Steam's folder and the link in one `renameat2(RENAME_EXCHANGE)`; a failed copy removes its staging folder; nothing deletes Steam's folder before the link is in place. | — | OK |
+| Steam starting midway | "Steam is running" is checked when each folder or runtime is handled, not held: a Steam started during a `relocate` could see a folder mid-move. Steam takes seconds to start and `relocate` takes well under one on one filesystem. | low | Accepted |
+| Cross-filesystem moves | They copy regular files with their permissions, folders and symlinks; times, hard links, sparseness and extended attributes aren't kept, and special files are refused (the copy is then removed, the original kept). Free space isn't checked first; a full disk fails the copy the same way. If deleting the original fails after the copy, both stay and the folder isn't linked; `relocate` then says the target isn't empty. | low | Accepted |
+| Libraries other than the root | Only the root's `steamapps` (and its shader cache) moves; the shader caches of other libraries stay in them. | — | By design |
+| Builds on unmounted libraries | `clean` and `remove` keep the builds Steam links to in the libraries they can see; a link on a library that isn't mounted doesn't protect its build. Steam restores a runtime it misses. | low | Accepted |
+
+`relocate` costs one pass over `/proc` per folder that moves: 0.16 s for all
+eight folders with 415 processes and about 4,000 open files.
+
