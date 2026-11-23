@@ -290,6 +290,68 @@ fn container_world(game: &str) -> (Sruman, PathBuf) {
     (s, exe)
 }
 
+/// Masks what changes from run to run: times, and live state that other
+/// tests running at the same time can affect (their games show up in
+/// `/proc`, and one of them uses a profile called `box` too).
+#[cfg(feature = "json")]
+fn stable(value: &mut serde_json::Value, root: &str) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if ["installed_at", "in_use", "running"].contains(&key.as_str()) {
+                    *v = Value::String("<live>".into());
+                } else {
+                    stable(v, root);
+                }
+            }
+        }
+        Value::Array(items) => {
+            // Sessions of other tests' worlds.
+            items.retain(|item| {
+                item.get("prefix")
+                    .and_then(Value::as_str)
+                    .is_none_or(|p| p.starts_with(root) || item.get("pid").is_none())
+            });
+            for item in items {
+                stable(item, root);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The `--json` output of every command that doesn't need the network, as
+/// snapshots (PLAN 5.5c): a schema change shows up as a diff. Temporary
+/// paths are masked.
+#[cfg(feature = "json")]
+#[test]
+fn json_schemas() {
+    let (s, _) = container_world("cli-json");
+    let root = s.root().display().to_string();
+    let mut shown = String::new();
+    for args in [
+        &["runtimes", "--json"][..],
+        &["info", "steamrt4", "--json"],
+        &["list", "--json"],
+        &["show", "cli-json", "--json"],
+        &["profiles", "list", "--json"],
+        &["profiles", "show", "box", "--json"],
+        &["status", "--json"],
+    ] {
+        let (out, _) = expect(&s.run(args), 0);
+        let mut value: serde_json::Value = serde_json::from_str(&out).expect(&out);
+        stable(&mut value, &root);
+        let text = serde_json::to_string_pretty(&value).unwrap();
+        shown.push_str(&format!(
+            "$ sruman {}\n{}\n",
+            args.join(" "),
+            text.replace(&root, "<tmp>")
+        ));
+    }
+    insta::assert_snapshot!("json", shown);
+}
+
 #[test]
 fn run_and_execute_in_container_mode() {
     let (s, exe) = container_world("cli-container");

@@ -1131,14 +1131,23 @@ before the binary, and Phase 4's commands get modes for free.
 
 ### Phase 5 — docs, audit and release
 
-- [ ] **5.1** `docs/USAGE.md` (command reference,
+- [x] **5.1** `docs/USAGE.md` (command reference,
       games, profiles, shared prefixes, game-vs-path resolution, wrappers,
       logs, exit codes) and
       `docs/RUNTIMES.md` (suites, channels, server layout, apt vs images,
       import from Steam/umu, userns troubleshooting, manual test list).
-- [ ] **5.2** Annotated `examples/config.toml`, `examples/games.toml` and
+      _Done 2026-11-23:_ USAGE.md covers the commands (one table row each),
+      exit codes, files, games, profiles and prefixes, shared prefixes,
+      wrappers and logs (env logged unredacted); RUNTIMES.md gained
+      channels, apt vs images, Steam/umu imports, troubleshooting and the
+      manual check list, with the new command names.
+- [x] **5.2** Annotated `examples/config.toml`, `examples/games.toml` and
       `examples/profiles/*.toml`,
       loaded by tests.
+      _Done 2026-11-23:_ `examples/config.toml` added; `sruman/tests/docs.rs`
+      runs it through the binary as shipped and with every key enabled, and
+      checks it lists every `config.toml` key; the games example shows every
+      game key.
 - [x] **5.3** Run the quality gates (§8) at all three feature levels, with
       `#![warn(missing_docs)]` on `libsruman`.
 - [ ] **5.4** Manual checks: one game per runtime (Hollow Knight on scout, a
@@ -1148,7 +1157,7 @@ before the binary, and Phase 4's commands get modes for free.
       (saves land in `<prefix>/home`) and in overlay mode without one (saves
       in the real home, `LD_DEBUG=libs` shows runtime libraries first and
       host glibc and Mesa); an SDL `host` override.
-- [ ] **5.5** **Automated audit.** Tooling and tests that run on every audit
+- [x] **5.5** **Automated audit.** Tooling and tests that run on every audit
       pass, not a one-off read-through. Wire it into
       `.github/workflows/audit.yml` (weekly schedule, on tags,
       `workflow_dispatch`), and list each job's local command in
@@ -1159,7 +1168,7 @@ before the binary, and Phase 4's commands get modes for free.
       Each finding is **fixed**, **accepted** with a reason, or turned into a
       **follow-up** step 5.6x. New dev-dependencies (`proptest`, `insta`,
       `criterion`) are justified under §7.2 and are dev-only.
-  - [ ] **5.5a Security.**
+  - [x] **5.5a Security.**
     - _Static:_ `#![forbid(unsafe_code)]` in both crates (rustix covers
       flock/setsid/kill safely). `clippy.toml` `disallowed-methods` bans
       `std::process::Command::new` outside `app/supervisor` and
@@ -1191,7 +1200,7 @@ before the binary, and Phase 4's commands get modes for free.
       `--json`, run logs and `tracing` output contain no credentials (there
       are none to leak, but env values are logged unredacted, as in lootrs,
       and USAGE.md must say so).
-  - [ ] **5.5b Performance.** Budgets are measured on the dev machine, with
+  - [x] **5.5b Performance.** Budgets are measured on the dev machine, with
         generous CI limits to catch regressions without flaking. Record
         baselines in `docs/AUDIT.md`.
     - _Startup_ (`hyperfine`, warm cache): `sruman --help`, `-Q`, `-P`, `-Qi sniper`,
@@ -1214,7 +1223,7 @@ before the binary, and Phase 4's commands get modes for free.
     - _Size:_ release binary size (`cargo bloat`) and dependency count
       (`cargo tree -e normal | wc -l`) for each feature level, with budgets
       in AUDIT.md.
-  - [ ] **5.5c Usability and bugs.**
+  - [x] **5.5c Usability and bugs.**
     - _Snapshot tests_ (`insta`) for every row of the CLI tables: help text,
       transaction summaries, `-Qi`/`-Pi` output, every user-facing error,
       and the `--json` schemas. Run with `NO_COLOR` and with forced color.
@@ -1246,9 +1255,23 @@ before the binary, and Phase 4's commands get modes for free.
       (`-Sy`, `-Si` for every catalog runtime, plus a download of the
       smallest archive), so a layout change on Valve's side is noticed
       before users hit it.
+      _Done 2026-11-23:_ results in `docs/AUDIT.md` (2 medium and 7 low
+      findings fixed, 5 low accepted, budgets measured; the install memory
+      budget is revised to 256 MiB there). `audit.yml` runs fuzzing,
+      50k-case property tests, mutants, the canary and size budgets; the
+      coverage floor is in `test.yml`. The old flag names above map to the
+      new commands (`-Q` → `runtimes`, `-Sy` → `sync`, `-Qkk` →
+      `verify --full`, `-X` → `execute`, `-P` → `profiles list`).
 - [ ] **5.6** Fix or record every 5.5 finding. Rerun the full audit job
       and all §8 gates green at the three feature levels, and update the
       baselines in `docs/AUDIT.md`.
+      _2026-11-23:_ every finding is fixed or accepted, and the §8 gates
+      pass at the three levels; what's left is the first `audit.yml` run on
+      GitHub (needs the branch pushed), then 5.6a.
+  - [ ] **5.6a** Triage the first cargo-mutants run: a test for each
+        surviving mutant in `store`, `install`, `catalog`, `version`,
+        `model` and `prefix`, or a line in `docs/AUDIT.md` saying why it's
+        equivalent.
 - [ ] **5.7** Tag 0.1.0. Publish `libsruman`, then `sruman`. Consider an
       AUR `PKGBUILD`.
 

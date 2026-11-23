@@ -1,0 +1,149 @@
+# The automated audit (PLAN 5.5, docs/AUDIT.md): weekly, on release tags and
+# by hand. Each job's local command is listed in docs/AUDIT.md §5.
+name: Audit
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [text, extract]
+
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: fuzz-${{ matrix.target }}
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      # Five minutes per target, starting from the committed corpus.
+      - name: Fuzz ${{ matrix.target }}
+        run: cargo fuzz run ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} -- -max_total_time=300
+
+      # A crash leaves its input here: add it as a regression test.
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+
+  proptest:
+    name: property tests (50k cases)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: proptest
+
+      - name: Property tests
+        run: cargo test --release -p libsruman --all-features --test robustness
+        env:
+          PROPTEST_CASES: "50000"
+
+  mutants:
+    name: mutants (libsruman)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mutants
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      # Survivors in store, install, catalog, version, model and prefix get a
+      # test or are recorded in docs/AUDIT.md as equivalent; this job
+      # reports, it doesn't gate.
+      - name: Mutation testing
+        run: |
+          cargo mutants -p libsruman --all-features --no-shuffle \
+            -f 'libsruman/src/store/**' -f 'libsruman/src/install/**' \
+            -f 'libsruman/src/catalog/**' -f 'libsruman/src/version/**' \
+            -f 'libsruman/src/model/**' -f 'libsruman/src/prefix/**' \
+            || echo "::warning::surviving mutants, see the mutants.out artifact"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants
+          path: mutants.out/
+
+  canary:
+    name: canary (Valve's server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: canary
+
+      # Refreshes every runtime, lists builds and installs + verifies scout
+      # (the smallest, with soldier as its dependency).
+      - name: Real server
+        run: cargo test -p libsruman --test real_server -- --ignored --nocapture
+        env:
+          SRUMAN_REAL_INSTALL: scout
+
+  size:
+    name: size budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: size
+
+      # Budgets from docs/AUDIT.md §2.4, about 25% over the baselines.
+      - name: Binary size and dependency count
+        run: |
+          check() {
+            cargo build --release -p sruman $1
+            size=$(( $(stat -c %s target/release/sruman) / 1024 ))
+            deps=$(cargo tree -p sruman $1 -e normal --prefix none | sed 's/ (\*)//' | sort -u | wc -l)
+            echo "${1:-default}: ${size} KiB, ${deps} crates (budgets ${2} KiB, ${3} crates)"
+            [ "$size" -le "$2" ] && [ "$deps" -le "$3" ]
+          }
+          check --no-default-features 6144 86
+          check "" 10752 119
