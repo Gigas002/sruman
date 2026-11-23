@@ -4,6 +4,9 @@ use super::*;
 use crate::store::{BuildMeta, MakeCurrent, Source, tests::fake_container};
 
 struct World {
+    /// The tests drop a build's hold and check it's free again, so none may
+    /// overlap a test that spawns processes (see `test_lock`).
+    _spawn: std::sync::RwLockReadGuard<'static, ()>,
     store: Store,
     folders: Folders,
     _tmp: tempfile::TempDir,
@@ -13,6 +16,7 @@ impl World {
     fn new() -> Self {
         let tmp = tempfile::tempdir().unwrap();
         Self {
+            _spawn: crate::test_lock::checks(),
             store: Store::open(tmp.path().join("runtimes")),
             folders: Folders::new(tmp.path()),
             _tmp: tmp,
