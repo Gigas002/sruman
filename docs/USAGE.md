@@ -30,7 +30,7 @@ These need the `download` feature (on by default) unless noted.
 | `sruman files` | An installed build's files, from Valve's file list. Works without `download`. |
 | `sruman verify` | Check installed builds (all without arguments) against Valve's file lists: every file, directory and link present, sizes matching; `--full` also checks every file's SHA-256. Works without `download`. |
 | `sruman import` | Install from a local archive (`SteamLinuxRuntime_4.tar.xz`, needs `download`) or a runtime directory (Steam's or umu's copy). `--link` registers a directory in place instead of copying it; sruman never deletes a linked build's files. |
-| `sruman provide-umu` | Make a runtime umu's folder (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a view of the build), so umu runs it and never downloads its own: `provide-umu steamrt4`, or `--appid 4183110` as Proton's `toolmanifest.vdf` names it. lootrs runs this before each umu launch. |
+| `sruman provide-umu` | Make a runtime umu's folder (`$XDG_DATA_HOME/sruman/umu/<variant>/`, a view of the build), so umu runs it and never downloads its own: `provide-umu steamrt4`, or `--appid 4183110` as Proton's `toolmanifest.vdf` names it. Point umu's `UMU_FOLDERS_PATH` (lootrs: `umu_folders`) at sruman's data directory to use it. |
 | `sruman doctor` | Check unprivileged user namespaces, bubblewrap and the installed runtimes (needs the `diag` feature, on by default). |
 
 ### Games and profiles
@@ -156,7 +156,9 @@ command did.
 
 ## Using sruman from lootrs and gaki
 
-lootrs and gaki read the same profiles and use `libsruman` for the runtime
-store. lootrs' umu runner calls `sruman provide-umu` before each launch so
-umu never downloads a runtime of its own; see D15 in
-[`PLAN.md`](PLAN.md).
+lootrs and gaki read the same profiles (libgameprofiles). gaki runs native
+games with `slr` profiles through `sruman execute`. lootrs doesn't call
+sruman: to run its umu profiles on sruman's runtime, run
+`sruman provide-umu steamrt4` once and set `umu_folders =
+"~/.local/share/sruman"` in lootrs' `config.toml` (umu's
+`UMU_FOLDERS_PATH`); see D15 in [`PLAN.md`](PLAN.md).
