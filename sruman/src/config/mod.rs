@@ -39,6 +39,8 @@ pub struct FileConfig {
     pub prefix_root: Option<PathBuf>,
     /// Steam's root folder, for `sruman steam`; found by itself without.
     pub steam_dir: Option<PathBuf>,
+    /// Where `steam relocate` moves Steam's library (`steamapps`).
+    pub steam_library: Option<PathBuf>,
     /// SIGTERM → SIGKILL grace period for `stop`.
     pub stop_timeout_secs: Option<u64>,
     /// `[[runtime]]` catalog extensions and overrides (D8).

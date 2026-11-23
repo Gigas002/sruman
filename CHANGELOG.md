@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file.
   Steam updated in place. Plain `clean` keeps the builds Steam links to and
   says so; `remove` refuses them, even with `--force`.
   `steam_dir` in `config.toml` names Steam's folder.
+- `sruman steam relocate [--undo]`: Steam's library (to the new
+  `steam_library`), caches (to `~/.cache/steam`) and logs (to
+  `~/.local/state/steam`) move out of its folder, with links left behind.
+  `steam status` lists where they are, and its `--json` is now an object
+  with `runtimes` and `places`.
 - The `steamrt3c` runtime, the one Steam's 64-bit client runs in.
 
 ### Changed

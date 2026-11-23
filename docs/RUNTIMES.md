@@ -10,10 +10,14 @@ What sruman installs, where it gets it, and how that's checked.
 | `soldier`    | `steamrt2` | `SteamLinuxRuntime_soldier.tar.xz`   | Debian 10      | container (pressure-vessel)               |
 | `sniper`     | `steamrt3` | `SteamLinuxRuntime_sniper.tar.xz`    | Debian 11      | container (pressure-vessel)               |
 | `steamrt4`   | `steamrt4` | `SteamLinuxRuntime_4.tar.xz` (+ `-arm64`) | Debian 13 | container (pressure-vessel)               |
+| `steamrt3c`  | `steamrt3c` | `steam-runtime-steamrt-amd64.tar.xz` (+ `-arm64`) | Debian 11 | Steam's 64-bit client (not games) |
 
 `steamrt4` is the latest and the one to use for native games and new
 profiles. The older runtimes stay for games built against them and for
-Protons whose `toolmanifest.vdf` asks for them.
+Protons whose `toolmanifest.vdf` asks for them. `steamrt3c` is the runtime
+Steam's own 64-bit client runs in; sruman installs it so `sruman steam link`
+can give Steam its client runtime too (see [Steam](USAGE.md#steam)). Its
+build ids start with `3c` (`3c.0.20261103.268067`).
 
 ## Where builds come from
 
@@ -90,6 +94,13 @@ updating it and sruman never deletes its files (`clean` skips linked builds).
 A runtime umu downloaded (`~/.local/share/umu/<variant>`) imports the same
 way; delete umu's copy afterwards and let `sruman provide-umu` hand the
 runtime to umu from then on.
+
+To go the other way, so that Steam runs on sruman's builds instead of
+keeping its own copies, use `sruman steam link` rather than `import`: it
+imports what's missing and puts links in Steam's folders, including the
+client's runtime (`steamrt64/pv-runtime/steam-runtime-steamrt`). Deleting
+Steam's copies doesn't work: Steam checks its files at every start and
+downloads them again. See [Steam](USAGE.md#steam).
 
 ## Troubleshooting
 

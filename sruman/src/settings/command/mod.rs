@@ -171,6 +171,7 @@ pub enum Steam {
     Unlink { runtimes: Vec<String> },
     Verify { runtimes: Vec<String>, full: bool },
     Clean,
+    Relocate { undo: bool },
 }
 
 /// `profiles …`.
@@ -264,6 +265,7 @@ impl Command {
                 Steam::Unlink { .. } => "steam unlink",
                 Steam::Verify { .. } => "steam verify",
                 Steam::Clean => "steam clean",
+                Steam::Relocate { .. } => "steam relocate",
             },
             Self::ProvideUmu { .. } => "provide-umu",
         }

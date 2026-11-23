@@ -38,6 +38,13 @@ from, how they're checked, troubleshooting). Examples are in
   [libgameprofiles](https://github.com/Gigas002/libgameprofiles) format that
   lootrs and gaki use too: a sruman profile has `runner = "slr"` and an
   `[slr]` section.
+- **Steam on sruman's runtimes.** `sruman steam link` replaces Steam's own
+  runtimes (its client's `steamrt3c` and the game runtimes) with links to
+  the same builds, so Steam runs on sruman's; `sruman steam relocate`
+  moves Steam's library, caches and logs out of its folder (to
+  `steam_library`, `~/.cache/steam`, `~/.local/state/steam`), so the folder
+  keeps only the client. Both undo (`steam unlink`, `steam relocate
+  --undo`). See [Steam](docs/USAGE.md#steam).
 - **Library first.** `libsruman` holds all the logic, so
   [lootrs](https://github.com/Gigas002/lootrs) and
   [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.
@@ -63,6 +70,9 @@ sruman logs hollow-knight                 # the latest run log
 sruman status / stop hollow-knight        # running games / stop one
 sruman shell -p steamrt4                  # a shell in the profile's runtime and prefix
 sruman provide-umu --appid 4183110        # hand steamrt4 to umu (UMU_FOLDERS_PATH, no umu downloads)
+sruman steam link                         # Steam on sruman's runtimes (links in place of Steam's copies)
+sruman steam relocate                     # Steam's library, caches and logs out of its folder
+sruman steam status / verify / clean      # where everything is; check; drop builds Steam wrote over
 sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```
 
@@ -73,7 +83,7 @@ sruman doctor                             # check the system (user namespaces, r
   runtimes use pressure-vessel, which Valve ships inside each runtime.
   Overlay mode (`mode = "overlay"`) runs games without a container.
 - Steam is **not** required. Games that insist on a running Steam client still
-  need Steam (or gaki).
+  need Steam (or gaki); the `steam` commands only matter if you use Steam.
 
 ## Files
 

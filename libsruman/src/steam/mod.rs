@@ -33,8 +33,11 @@ use crate::{
     version::{BuildId, RuntimeRef},
 };
 
+pub mod relocate;
 #[cfg(test)]
 mod tests;
+
+pub use relocate::{Place, Placed, Targets};
 
 /// The runtime Steam's 64-bit client runs in.
 pub const CLIENT_RUNTIME: &str = "steamrt3c";
@@ -92,6 +95,10 @@ pub enum SteamError {
         /// Where it links to.
         target: PathBuf,
     },
+
+    /// A folder to move into exists already and isn't empty.
+    #[error("{} exists and isn't empty; move it away first", .0.display())]
+    TargetExists(PathBuf),
 
     /// The build to link doesn't match its file list.
     #[error(

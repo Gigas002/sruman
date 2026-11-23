@@ -235,7 +235,11 @@ pub(crate) fn copy_runtime(from: &Path, to: &Path) -> Result<(), StoreError> {
 /// Copies regular files (with permissions), directories and symlinks (as
 /// links); other file types are refused. Top-level entries for which
 /// `skip` holds are left out.
-fn copy_tree(from: &Path, to: &Path, skip: &dyn Fn(&str) -> bool) -> Result<(), StoreError> {
+pub(crate) fn copy_tree(
+    from: &Path,
+    to: &Path,
+    skip: &dyn Fn(&str) -> bool,
+) -> Result<(), StoreError> {
     let meta = fs::symlink_metadata(from).map_err(io_err(from))?;
     fs::create_dir(to).map_err(io_err(to))?;
     for entry in fs::read_dir(from).map_err(io_err(from))? {
