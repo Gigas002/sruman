@@ -145,6 +145,7 @@ tee'd single pass would complicate resuming. **Accepted.**
 | Cancelled extraction | Cancelling during extraction came back as `InstallError::Extract(Cancelled)` instead of `InstallError::Cancelled`, and under load the decoder threads could turn the cancelled read into another error (one unreproduced failure of the new crash test). Both map to `Cancelled` now: the cancel flag decides. | low | Fixed (`2c68b0a`) |
 | `import` errors | An error for a missing path printed the path twice (`/x: /x: No such file…`). | low | Fixed (`2c68b0a`) |
 | `info` without downloads | `info <runtime>` for a runtime that isn't installed said only "is not installed"; in a build without the `download` feature it now says to `import` it. | low | Fixed (`2c68b0a`) |
+| `show` without a runtime | `show <game>` printed `Prefix : None (real home)` for a game whose profile has a prefix when the launch couldn't be prepared, e.g. with the runtime not installed: misleading exactly when you're finding out what's wrong. It shows the profile's prefix now. Found while checking the dotfiles' sruman config. | low | Fixed |
 | Hints without downloads | libsruman's store errors suggest `sruman install` even in a `sruman` built without `download`, where that command doesn't exist. Such builds are for packagers and embedding, and `--help` lists what's there. | low | Accepted |
 | Sessions across configs | `status`, `in use` and `stop` find games by the `SRUMAN_*` variables in `/proc/<pid>/environ`, so two sruman configs of the same user (other `XDG_*` directories) see each other's games, and a profile name used in both counts as in use in both. Other users' processes aren't readable, and one user normally has one config; it showed up only in parallel tests, whose snapshots now mask live state. | low | Accepted |
 | Docs | Writing USAGE.md showed that `execute` takes a path or a program in the runtime's `PATH`, not a game name (lootrs' `resolve_target` isn't used by sruman). USAGE.md says so; a test now keeps the docs' command and option lists in step with clap. | — | Fixed (docs) |
@@ -199,7 +200,7 @@ hours):
 | -------- | ----- | -------- | --------- |
 | high | 0 | 0 | 0 |
 | medium | 2 (archive size cap, decoder memory) | 0 | 0 |
-| low | 7 | 5 | 1 (5.6a: mutants triage) |
+| low | 8 | 5 | 1 (5.6a: mutants triage) |
 
 Not counted above: the docs fix (§3) and the deviations from PLAN budgets,
 accepted with their reasons in §2 (install memory, two reads of the

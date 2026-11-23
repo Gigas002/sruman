@@ -255,6 +255,15 @@ fn check_on_the_examples() {
     }
     let (list, _) = expect(&s.run(&["list"]), 0);
     assert!(list.contains("hollow-knight"), "{list}");
+    // A profile's prefix shows even when its runtime isn't installed.
+    let games = fs::read_to_string(s.config().join("games.toml")).unwrap();
+    s.write_config(
+        "games.toml",
+        &format!("{games}\n[[game]]\nname = \"indie\"\nexe = \"/bin/true\"\nprofile = \"shared-prefix-a\"\n"),
+    );
+    let (show, err) = expect(&s.run(&["show", "indie"]), 0);
+    assert!(show.contains("sruman/prefixes/indie"), "{show}");
+    assert!(err.contains("is not installed"), "{err}");
     let (profiles, _) = expect(&s.run(&["profiles", "list"]), 0);
     assert!(profiles.contains("shared-prefix-a"), "{profiles}");
 }

@@ -25,6 +25,8 @@ The first release.
 - `profiles list` reads `/proc` once instead of once per profile.
 - A download cancelled while extracting is reported as cancelled.
 - `import` no longer prints the path twice in its errors.
+- `show` shows the profile's prefix also when the game can't start yet (its
+  runtime isn't installed), instead of "None (real home)".
 
 ### Changed
 

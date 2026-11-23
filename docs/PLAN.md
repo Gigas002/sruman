@@ -1255,7 +1255,7 @@ before the binary, and Phase 4's commands get modes for free.
       (`-Sy`, `-Si` for every catalog runtime, plus a download of the
       smallest archive), so a layout change on Valve's side is noticed
       before users hit it.
-      _Done 2026-11-23:_ results in `docs/AUDIT.md` (2 medium and 7 low
+      _Done 2026-11-23:_ results in `docs/AUDIT.md` (2 medium and 8 low
       findings fixed, 5 low accepted, budgets measured; the install memory
       budget is revised to 256 MiB there). `audit.yml` runs fuzzing,
       50k-case property tests, mutants, the canary and size budgets; the
