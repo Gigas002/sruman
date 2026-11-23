@@ -190,7 +190,9 @@ checked against its file list before Steam's copy is replaced.
 - `steam unlink` copies the builds back, which undoes it.
 
 Quit Steam before `link`, `unlink` and `relocate` (sruman refuses while it
-runs, exit code 4). sruman finds Steam through `~/.steam/root`; set
+runs, exit code 4; that's a `steam` process from Steam's folder, or the one
+in `~/.steam/steam.pid` or in the pid file of the home Steam's folder is in,
+which covers a Flatpak Steam). sruman finds Steam through `~/.steam/root`; set
 `steam_dir` for another one.
 
 **Everything else out of Steam's folder.** `sruman steam relocate` moves
@@ -205,8 +207,14 @@ place, the same way:
 
 `steam status` shows where each is. A folder Steam hasn't made yet gets its
 link right away, so Steam never makes it at home. A target that exists and
-isn't empty is refused. On another filesystem, the folder is copied, then
-deleted. `config/` (your login and settings) and `userdata/` stay; so does
+isn't empty is refused, and so is a folder a process has files open in (a
+game started without Steam, say by gaki), or a target inside the folder.
+On another filesystem, the folder is copied, then deleted. Steam's own
+folder is private (`0700`) and keeps what's in it from other users, so
+folders sruman makes for the targets are private too, and a moved folder
+loses the permissions Steam's folder didn't give. If you remove
+`steam_library` after moving the library, `status` still shows where it is,
+and sruman leaves it there; set the key again to move it back. `config/` (your login and settings) and `userdata/` stay; so does
 `~/.steam`, which Steam needs where it is. `relocate --undo` moves
 everything back. Point `steam_library` at a folder of its own (say
 `~/games/steam`), not at one gaki keeps games in with its own layout: a

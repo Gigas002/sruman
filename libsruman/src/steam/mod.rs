@@ -100,6 +100,43 @@ pub enum SteamError {
     #[error("{} exists and isn't empty; move it away first", .0.display())]
     TargetExists(PathBuf),
 
+    /// A folder of Steam's links somewhere other than where it goes now.
+    #[error(
+        "{} links to {}, not to {}; was it moved with other settings? Set them back and \
+         `sruman steam relocate --undo`, or move it yourself",
+        path.display(),
+        target.display(),
+        wanted.display()
+    )]
+    Relocated {
+        /// Steam's folder.
+        path: PathBuf,
+        /// Where it links to.
+        target: PathBuf,
+        /// Where it goes with the current settings.
+        wanted: PathBuf,
+    },
+
+    /// A folder can't move into itself or over the folder it's in.
+    #[error("{} can't move to {}: one is inside the other", path.display(), target.display())]
+    Nested {
+        /// Steam's folder.
+        path: PathBuf,
+        /// Where it would go.
+        target: PathBuf,
+    },
+
+    /// A process uses files in a folder to move.
+    #[error("{} is in use by {name} (pid {pid}); stop it first", path.display())]
+    Busy {
+        /// The folder.
+        path: PathBuf,
+        /// The process.
+        pid: String,
+        /// Its name.
+        name: String,
+    },
+
     /// The build to link doesn't match its file list.
     #[error(
         "{name} {build} doesn't match its file list ({count} problems; `sruman verify {name}`); {} is left as it is",
@@ -263,9 +300,19 @@ impl Steam {
                 client: true,
             });
         }
+        // A library can be listed twice under two names (the root's
+        // `steamapps` moved by `relocate` into a folder that's also a
+        // library of its own).
+        let mut seen = Vec::new();
         for library in self.libraries() {
+            let common = library.join("steamapps/common");
+            let real = fs::canonicalize(&common).unwrap_or_else(|_| common.clone());
+            if seen.contains(&real) {
+                continue;
+            }
+            seen.push(real);
             for (runtime, folder) in GAME_FOLDERS {
-                let path = library.join("steamapps/common").join(folder);
+                let path = common.join(folder);
                 if exists(&path) {
                     out.push(Slot {
                         runtime: runtime.to_owned(),
@@ -278,15 +325,36 @@ impl Steam {
         out
     }
 
-    /// Whether Steam runs: the process in its pid file is called `steam`.
+    /// Whether Steam runs: the process in its pid file is called `steam`,
+    /// or a process of this user runs Steam's `steam` from this root. Besides
+    /// `~/.steam/steam.pid`, the pid file of the home this root belongs to
+    /// counts (`<home>/.local/share/Steam` → `<home>/.steam/steam.pid`), for a
+    /// Steam started with another `HOME`, as a Flatpak one is.
     pub fn running(&self) -> bool {
-        let Some(pid) = fs::read_to_string(&self.pid_file)
-            .ok()
-            .and_then(|text| text.trim().parse::<u32>().ok())
-        else {
-            return false;
+        let is_steam = |pid: &str| {
+            fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| comm.trim() == "steam")
         };
-        fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| comm.trim() == "steam")
+        let mut pid_files = vec![self.pid_file.clone()];
+        if self.root.ends_with(".local/share/Steam")
+            && let Some(home) = self.root.ancestors().nth(3)
+        {
+            pid_files.push(home.join(".steam/steam.pid"));
+        }
+        let from_pid_file = pid_files.iter().any(|file| {
+            fs::read_to_string(file)
+                .ok()
+                .and_then(|text| text.trim().parse::<u32>().ok())
+                .is_some_and(|pid| is_steam(&pid.to_string()))
+        });
+        if from_pid_file {
+            return true;
+        }
+        let root = fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+        let uid = rustix::process::getuid().as_raw();
+        own_pids(uid).any(|pid| {
+            is_steam(&pid)
+                && fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe.starts_with(&root))
+        })
     }
 
     /// The builds Steam links to, with their slots: `clean` and `remove`
@@ -455,9 +523,66 @@ fn library_paths(text: &str) -> Vec<PathBuf> {
         .filter_map(|line| {
             let value = line.trim().strip_prefix("\"path\"")?.trim();
             let value = value.strip_prefix('"')?.strip_suffix('"')?;
-            Some(PathBuf::from(value.replace("\\\\", "\\")))
+            let path = PathBuf::from(value.replace("\\\\", "\\"));
+            // A relative path would be taken from sruman's working folder.
+            path.is_absolute().then_some(path)
         })
         .collect()
+}
+
+/// This user's processes, as `/proc` entry names.
+fn own_pids(uid: u32) -> impl Iterator<Item = String> {
+    use std::os::unix::fs::MetadataExt;
+    fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(move |entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .bytes()
+                .all(|b| b.is_ascii_digit())
+                && entry.metadata().is_ok_and(|meta| meta.uid() == uid)
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+}
+
+/// A process of this user that has a file under `dir` open, mapped, or as
+/// its working folder or executable: its pid and name.
+pub(crate) fn busy(dir: &Path) -> Option<(String, String)> {
+    let uid = rustix::process::getuid().as_raw();
+    let under = |path: &Path| path.starts_with(dir);
+    own_pids(uid).find_map(|pid| {
+        let proc = Path::new("/proc").join(&pid);
+        let links = ["cwd", "exe", "root"]
+            .iter()
+            .map(|name| proc.join(name))
+            .chain(
+                fs::read_dir(proc.join("fd"))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path()),
+            );
+        let mut hit = links
+            .filter_map(|link| fs::read_link(link).ok())
+            .any(|p| under(&p));
+        if !hit {
+            hit = fs::read_to_string(proc.join("maps")).is_ok_and(|maps| {
+                maps.lines()
+                    .filter_map(|line| {
+                        line.split_once('/')
+                            .map(|(_, rest)| Path::new("/").join(rest))
+                    })
+                    .any(|p| under(&p))
+            });
+        }
+        hit.then(|| {
+            let name = fs::read_to_string(proc.join("comm")).unwrap_or_default();
+            (pid.clone(), name.trim().to_owned())
+        })
+    })
 }
 
 /// `.<name>.sruman-<pid>` next to `path`.
