@@ -586,6 +586,9 @@ fn container(top: &str, suite: &str, build: &str, manifest: &str) -> Vec<u8> {
 }
 
 struct Fake {
+    /// Every `Fake` test takes the store lock again after dropping it, so
+    /// none may overlap a test that spawns processes (see `test_lock`).
+    _spawn: std::sync::RwLockReadGuard<'static, ()>,
     fetch: MemFetch,
     _tmp: tempfile::TempDir,
     sync: SyncDir,
@@ -597,6 +600,7 @@ impl Fake {
     fn new() -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let fake = Self {
+            _spawn: crate::test_lock::checks(),
             fetch: MemFetch::default(),
             sync: SyncDir::new(tmp.path().join("sync")),
             store: Store::open(tmp.path().join("runtimes")),
