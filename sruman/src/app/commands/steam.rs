@@ -1,7 +1,7 @@
 //! `steam status|link|unlink` (D17): Steam on sruman's runtimes.
 
 use libsruman::{
-    steam::{self, Place, Placed, Slot, State, Steam, SteamError, Targets},
+    steam::{self, Slot, State, Steam, SteamError},
     store::Installed,
 };
 
@@ -12,13 +12,8 @@ impl From<SteamError> for AppError {
         match err {
             SteamError::Store(err) => err.into(),
             SteamError::Import(err) => err.into(),
-            SteamError::Running | SteamError::InUse(_) | SteamError::Busy { .. } => {
-                Self::Busy(err.to_string())
-            }
-            SteamError::Foreign { .. }
-            | SteamError::TargetExists(_)
-            | SteamError::Relocated { .. }
-            | SteamError::Nested { .. } => Self::Invalid(err.to_string()),
+            SteamError::Running | SteamError::InUse(_) => Self::Busy(err.to_string()),
+            SteamError::Foreign { .. } => Self::Invalid(err.to_string()),
             SteamError::Io { .. } | SteamError::Damaged { .. } => Self::Failed(err.to_string()),
         }
     }
@@ -106,69 +101,14 @@ fn row(app: &App, slot: &Slot) -> Result<Row, AppError> {
     Ok(row)
 }
 
-/// Where `steam relocate` sends Steam's folders.
-fn targets(app: &App) -> Targets {
-    let dirs = &app.settings.dirs;
-    Targets {
-        library: dirs.steam_library.clone(),
-        cache: dirs.cache_home.join("steam"),
-        state: dirs.state_home.join("steam"),
-    }
-}
-
-#[cfg_attr(feature = "json", derive(serde::Serialize))]
-#[cfg_attr(not(feature = "json"), allow(dead_code))]
-struct PlaceRow {
-    name: &'static str,
-    path: String,
-    target: String,
-    /// `moved`, `here`, `missing` or `elsewhere`.
-    state: &'static str,
-    /// `elsewhere`: where the link leads.
-    link: Option<String>,
-}
-
-/// Where Steam's `steamapps` links to when `steam_library` isn't set: a
-/// library moved before the key was removed, or linked by hand. sruman
-/// shows it but doesn't move it.
-fn unmanaged_library(app: &App, steam: &Steam) -> Option<std::path::PathBuf> {
-    if app.settings.dirs.steam_library.is_some() {
-        return None;
-    }
-    let path = steam.root().join("steamapps");
-    let meta = std::fs::symlink_metadata(&path).ok()?;
-    meta.file_type()
-        .is_symlink()
-        .then(|| std::fs::read_link(&path).ok())
-        .flatten()
-}
-
-fn place_row(place: &Place) -> PlaceRow {
-    let (state, link) = match place.placed() {
-        Placed::Moved => ("moved", None),
-        Placed::Here => ("here", None),
-        Placed::Missing => ("missing", None),
-        Placed::Elsewhere(link) => ("elsewhere", Some(link.display().to_string())),
-    };
-    PlaceRow {
-        name: place.name,
-        path: place.path.display().to_string(),
-        target: place.target.display().to_string(),
-        state,
-        link,
-    }
-}
-
 #[cfg(feature = "json")]
 #[derive(serde::Serialize)]
 struct Status<'a> {
     root: String,
     runtimes: &'a [Row],
-    places: &'a [PlaceRow],
 }
 
-/// `steam status`: the runtimes, then where Steam's library, caches and
-/// logs are.
+/// `steam status`: Steam's runtimes and what they link to.
 pub fn status(app: &mut App) -> Result<u8, AppError> {
     let steam = steam(app)?;
     let rows = steam
@@ -176,26 +116,11 @@ pub fn status(app: &mut App) -> Result<u8, AppError> {
         .iter()
         .map(|slot| row(app, slot))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut places: Vec<PlaceRow> = steam.places(&targets(app)).iter().map(place_row).collect();
-    let unmanaged = unmanaged_library(app, &steam);
-    if let Some(link) = &unmanaged {
-        places.insert(
-            0,
-            PlaceRow {
-                name: "library",
-                path: steam.root().join("steamapps").display().to_string(),
-                target: link.display().to_string(),
-                state: "unset",
-                link: Some(link.display().to_string()),
-            },
-        );
-    }
     #[cfg(feature = "json")]
     if app.out.json {
         app.out.json(&Status {
             root: steam.root().display().to_string(),
             runtimes: &rows,
-            places: &places,
         })?;
         return Ok(0);
     }
@@ -231,98 +156,11 @@ pub fn status(app: &mut App) -> Result<u8, AppError> {
         }
         app.out.table(&table)?;
     }
-    let mut table = vec![vec![
-        "FOLDER".to_owned(),
-        "STATE".to_owned(),
-        "WHERE".to_owned(),
-    ]];
-    for place in &places {
-        let (state, at) = match place.state {
-            "moved" => (app.out.green("moved"), place.target.clone()),
-            "here" => (app.out.yellow("in Steam's folder"), place.path.clone()),
-            "missing" => ("not there yet".to_owned(), place.path.clone()),
-            "unset" => (
-                app.out.yellow("moved (`steam_library` unset)"),
-                place.target.clone(),
-            ),
-            _ => (
-                app.out.red("links elsewhere"),
-                place.link.clone().unwrap_or_default(),
-            ),
-        };
-        table.push(vec![place.name.to_owned(), state, at]);
-    }
-    app.out.table(&table)?;
     if rows.iter().any(|r| matches!(r.state, "copy" | "changed")) {
         app.out
             .note("`sruman steam link` links the runtimes to sruman's builds")?;
     }
-    if places.iter().any(|p| p.state == "here") {
-        app.out
-            .note("`sruman steam relocate` moves the folders out of Steam's")?;
-    }
-    if app.settings.dirs.steam_library.is_none() && unmanaged.is_none() {
-        app.out
-            .note("set `steam_library` in config.toml to move the library too")?;
-    }
     Ok(0)
-}
-
-/// `steam relocate [--undo]`.
-pub fn relocate(app: &mut App, undo: bool) -> Result<u8, AppError> {
-    let steam = steam(app)?;
-    if steam.running() {
-        return Err(SteamError::Running.into());
-    }
-    let mut places = steam.places(&targets(app));
-    if undo {
-        // The shader cache goes back into the library before the library.
-        places.reverse();
-    }
-    let mut code = 0;
-    for place in &places {
-        let result = if undo {
-            steam.unrelocate(place)
-        } else {
-            steam.relocate(place)
-        };
-        match result {
-            Ok(true) if undo => {
-                tracing::info!(folder = place.name, "moved back into Steam's folder");
-                app.out
-                    .info(format!("{}: back in {}", place.name, place.path.display()))?;
-            }
-            Ok(true) => {
-                tracing::info!(folder = place.name, target = %place.target.display(), "relocated");
-                app.out.info(format!(
-                    "{}: moved to {}",
-                    place.name,
-                    place.target.display()
-                ))?;
-            }
-            Ok(false) => {}
-            Err(err) => {
-                let err = AppError::from(err);
-                code = code.max(err.exit_code());
-                app.out.error(format!("{}: {err}", place.name))?;
-            }
-        }
-    }
-    match unmanaged_library(app, &steam) {
-        Some(link) => app.out.note(format!(
-            "the library stays at {}: `steam_library` isn't set, so sruman leaves it alone",
-            link.display()
-        ))?,
-        None if !undo && app.settings.dirs.steam_library.is_none() => app
-            .out
-            .note("the library stays: set `steam_library` in config.toml to move it")?,
-        None => {}
-    }
-    if code == 0 {
-        Ok(0)
-    } else {
-        Err(AppError::Reported(code))
-    }
 }
 
 /// The slots `names` asks for (all without names).

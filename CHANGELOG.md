@@ -13,14 +13,11 @@ All notable changes to this project will be documented in this file.
   Steam updated in place. Plain `clean` keeps the builds Steam links to and
   says so; `remove` refuses them, even with `--force`.
   `steam_dir` in `config.toml` names Steam's folder.
-- `sruman steam relocate [--undo]`: Steam's library (to the new
-  `steam_library`), caches (to `~/.cache/steam`) and logs (to
-  `~/.local/state/steam`) move out of its folder, with links left behind.
-  `steam status` lists where they are, and its `--json` is now an object
-  with `runtimes` and `places`.
-  `relocate` refuses folders a process has open and targets inside the
-  folder, keeps moved folders as private as Steam's own, and with
-  `steam_library` removed after a move shows the library and leaves it.
+  `steam status --json` is an object with Steam's `root` and its
+  `runtimes`. Moving Steam's library, caches and logs out of its folder is
+  gaki's (`gaki-cli steam relocate`), which picks up where an earlier
+  development build's `sruman steam relocate` left them; a `steam_library`
+  left in `config.toml` is ignored with a warning.
 - `sruman steam` sees a Steam started with another `HOME` (a Flatpak) as
   running, ignores relative paths in `libraryfolders.vdf`, and lists a
   library listed twice under two names once.

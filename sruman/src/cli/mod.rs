@@ -340,14 +340,6 @@ pub enum SteamCommand {
     },
     /// Remove builds Steam updated in place and no longer links to.
     Clean,
-    /// Move Steam's library (to `steam_library`), caches (to
-    /// `$XDG_CACHE_HOME/steam`) and logs (to `$XDG_STATE_HOME/steam`) out
-    /// of its folder, leaving links. Steam must not run.
-    Relocate {
-        /// Move them back into Steam's folder instead.
-        #[arg(long)]
-        undo: bool,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -596,7 +588,6 @@ fn command(command: Command, quiet: bool) -> (Cmd, bool) {
                 plain(Cmd::Steam(Steam::Verify { runtimes, full }))
             }
             SteamCommand::Clean => plain(Cmd::Steam(Steam::Clean)),
-            SteamCommand::Relocate { undo } => plain(Cmd::Steam(Steam::Relocate { undo })),
         },
         Command::ProvideUmu {
             runtime,

@@ -35,7 +35,6 @@ These need the `download` feature (on by default) unless noted.
 | `sruman steam link` | Replace Steam's runtimes (all, or the named ones) with links to the same builds in the store, importing Steam's copy of a build sruman doesn't have; see [Steam](#steam). Steam must not run. Works without `download`. |
 | `sruman steam unlink` | Put copies of the builds back in place of the links, so Steam has its own runtimes again. Steam must not run. Works without `download`. |
 | `sruman steam verify` | Check the builds Steam links to (all, or the named runtimes) as `verify` does; `--full` also checks every file's SHA-256. A build Steam updated in place fails. Works without `download`. |
-| `sruman steam relocate` | Move Steam's library (to `steam_library`), caches (to `~/.cache/steam`) and logs (to `~/.local/state/steam`) out of its folder, leaving links; `--undo` moves them back. See [Steam](#steam). Steam must not run. Works without `download`. |
 | `sruman steam clean` | Remove the builds Steam updated in place and no longer links to (what `steam link` leaves after a Steam update). Works without `download`. |
 | `sruman doctor` | Check unprivileged user namespaces, bubblewrap and the installed runtimes (needs the `diag` feature, on by default). |
 
@@ -93,7 +92,6 @@ With `--wait`, the game's own exit code instead.
 | Prefixes | `~/.local/share/sruman/prefixes/<profile>/` (`prefix_root`) |
 | umu views | `~/.local/share/sruman/umu/<variant>/` |
 | Steam | `steam_dir` in `config.toml`, else `~/.steam/root`, else `~/.local/share/Steam` |
-| Steam's library, caches, logs (`steam relocate`) | `<steam_library>/steamapps`, `~/.cache/steam/`, `~/.local/state/steam/logs` |
 | Sync index | `~/.cache/sruman/sync/` |
 | Download cache | `~/.cache/sruman/pkg/` |
 | App logs | `~/.local/state/sruman/logs/` (daily, `log_keep` kept) |
@@ -189,36 +187,18 @@ checked against its file list before Steam's copy is replaced.
   new build's now.
 - `steam unlink` copies the builds back, which undoes it.
 
-Quit Steam before `link`, `unlink` and `relocate` (sruman refuses while it
+Quit Steam before `link` and `unlink` (sruman refuses while it
 runs, exit code 4; that's a `steam` process from Steam's folder, or the one
 in `~/.steam/steam.pid` or in the pid file of the home Steam's folder is in,
 which covers a Flatpak Steam). sruman finds Steam through `~/.steam/root`; set
 `steam_dir` for another one.
 
-**Everything else out of Steam's folder.** `sruman steam relocate` moves
-what isn't the client itself to where it belongs and leaves a link in its
-place, the same way:
-
-| Steam's folder | Goes to |
-| -------------- | ------- |
-| `steamapps` (the library: games, their records, Proton prefixes) | `<steam_library>/steamapps`, only with `steam_library` set |
-| `appcache`, `depotcache`, `package`, `config/htmlcache`, `config/avatarcache`, `steamapps/shadercache` | `~/.cache/steam/<name>` |
-| `logs` | `~/.local/state/steam/logs` |
-
-`steam status` shows where each is. A folder Steam hasn't made yet gets its
-link right away, so Steam never makes it at home. A target that exists and
-isn't empty is refused, and so is a folder a process has files open in (a
-game started without Steam, say by gaki), or a target inside the folder.
-On another filesystem, the folder is copied, then deleted. Steam's own
-folder is private (`0700`) and keeps what's in it from other users, so
-folders sruman makes for the targets are private too, and a moved folder
-loses the permissions Steam's folder didn't give. If you remove
-`steam_library` after moving the library, `status` still shows where it is,
-and sruman leaves it there; set the key again to move it back. `config/` (your login and settings) and `userdata/` stay; so does
-`~/.steam`, which Steam needs where it is. `relocate --undo` moves
-everything back. Point `steam_library` at a folder of its own (say
-`~/games/steam`), not at one gaki keeps games in with its own layout: a
-`steamapps` there would make gaki treat it as a Steam library.
+**Everything else out of Steam's folder** (its library, caches and logs) is
+gaki's: `gaki-cli steam relocate` moves them and leaves links, and picks up
+where an earlier development build's `sruman steam relocate` left them.
+sruman ignores a `steam_library` left in `config.toml`, with a warning. A
+library moved that way is still one library to `sruman steam`: its runtimes
+are found through Steam's `steamapps` link.
 
 ## Using sruman from lootrs and gaki
 

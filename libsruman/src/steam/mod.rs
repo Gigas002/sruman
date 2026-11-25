@@ -33,11 +33,8 @@ use crate::{
     version::{BuildId, RuntimeRef},
 };
 
-pub mod relocate;
 #[cfg(test)]
 mod tests;
-
-pub use relocate::{Place, Placed, Targets};
 
 /// The runtime Steam's 64-bit client runs in.
 pub const CLIENT_RUNTIME: &str = "steamrt3c";
@@ -94,47 +91,6 @@ pub enum SteamError {
         path: PathBuf,
         /// Where it links to.
         target: PathBuf,
-    },
-
-    /// A folder to move into exists already and isn't empty.
-    #[error("{} exists and isn't empty; move it away first", .0.display())]
-    TargetExists(PathBuf),
-
-    /// A folder of Steam's links somewhere other than where it goes now.
-    #[error(
-        "{} links to {}, not to {}; was it moved with other settings? Set them back and \
-         `sruman steam relocate --undo`, or move it yourself",
-        path.display(),
-        target.display(),
-        wanted.display()
-    )]
-    Relocated {
-        /// Steam's folder.
-        path: PathBuf,
-        /// Where it links to.
-        target: PathBuf,
-        /// Where it goes with the current settings.
-        wanted: PathBuf,
-    },
-
-    /// A folder can't move into itself or over the folder it's in.
-    #[error("{} can't move to {}: one is inside the other", path.display(), target.display())]
-    Nested {
-        /// Steam's folder.
-        path: PathBuf,
-        /// Where it would go.
-        target: PathBuf,
-    },
-
-    /// A process uses files in a folder to move.
-    #[error("{} is in use by {name} (pid {pid}); stop it first", path.display())]
-    Busy {
-        /// The folder.
-        path: PathBuf,
-        /// The process.
-        pid: String,
-        /// Its name.
-        name: String,
     },
 
     /// The build to link doesn't match its file list.
@@ -301,8 +257,8 @@ impl Steam {
             });
         }
         // A library can be listed twice under two names (the root's
-        // `steamapps` moved by `relocate` into a folder that's also a
-        // library of its own).
+        // `steamapps` moved by `gaki-cli steam relocate` into a folder
+        // that's also a library of its own).
         let mut seen = Vec::new();
         for library in self.libraries() {
             let common = library.join("steamapps/common");
@@ -546,43 +502,6 @@ fn own_pids(uid: u32) -> impl Iterator<Item = String> {
                 && entry.metadata().is_ok_and(|meta| meta.uid() == uid)
         })
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-}
-
-/// A process of this user that has a file under `dir` open, mapped, or as
-/// its working folder or executable: its pid and name.
-pub(crate) fn busy(dir: &Path) -> Option<(String, String)> {
-    let uid = rustix::process::getuid().as_raw();
-    let under = |path: &Path| path.starts_with(dir);
-    own_pids(uid).find_map(|pid| {
-        let proc = Path::new("/proc").join(&pid);
-        let links = ["cwd", "exe", "root"]
-            .iter()
-            .map(|name| proc.join(name))
-            .chain(
-                fs::read_dir(proc.join("fd"))
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|entry| entry.path()),
-            );
-        let mut hit = links
-            .filter_map(|link| fs::read_link(link).ok())
-            .any(|p| under(&p));
-        if !hit {
-            hit = fs::read_to_string(proc.join("maps")).is_ok_and(|maps| {
-                maps.lines()
-                    .filter_map(|line| {
-                        line.split_once('/')
-                            .map(|(_, rest)| Path::new("/").join(rest))
-                    })
-                    .any(|p| under(&p))
-            });
-        }
-        hit.then(|| {
-            let name = fs::read_to_string(proc.join("comm")).unwrap_or_default();
-            (pid.clone(), name.trim().to_owned())
-        })
-    })
 }
 
 /// `.<name>.sruman-<pid>` next to `path`.

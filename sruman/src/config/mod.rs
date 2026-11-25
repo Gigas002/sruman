@@ -39,7 +39,9 @@ pub struct FileConfig {
     pub prefix_root: Option<PathBuf>,
     /// Steam's root folder, for `sruman steam`; found by itself without.
     pub steam_dir: Option<PathBuf>,
-    /// Where `steam relocate` moves Steam's library (`steamapps`).
+    /// Ignored, with a warning: `steam relocate` and its library moved to
+    /// gaki (`gaki-cli steam relocate`). Still read so a config that sets it
+    /// loads.
     pub steam_library: Option<PathBuf>,
     /// SIGTERM → SIGKILL grace period for `stop`.
     pub stop_timeout_secs: Option<u64>,

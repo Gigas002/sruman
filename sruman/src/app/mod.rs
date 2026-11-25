@@ -260,5 +260,11 @@ impl App<'_> {
 pub fn run(settings: &Settings, out: &mut Printer) -> Result<u8, AppError> {
     let mut app = App { settings, out };
     tracing::info!(command = settings.command.name(), "start");
+    if settings.stale_steam_library {
+        app.out.warning(
+            "config.toml: `steam_library` does nothing now: moving Steam's folders is \
+             `gaki-cli steam relocate`, which uses gaki's `steam_library`; remove the key",
+        )?;
+    }
     commands::dispatch(&mut app, &settings.command)
 }

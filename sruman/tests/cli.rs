@@ -585,7 +585,7 @@ fn steam_link_status_and_unlink() {
         let rows: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(rows["runtimes"][0]["state"], "linked");
         assert_eq!(rows["runtimes"][0]["build"], "4.0.1");
-        assert_eq!(rows["places"][0]["name"], "appcache");
+        assert!(rows.get("places").is_none());
     }
 
     // remove keeps a build Steam links to, even with --force.
@@ -639,101 +639,13 @@ fn steam_link_status_and_unlink() {
 }
 
 #[test]
-fn steam_relocate_and_back() {
+fn steam_library_is_ignored_with_a_warning() {
     let s = Sruman::new();
-    let root = s.root().join("data/Steam");
-    fs::create_dir_all(root.join("steamapps/common/Game")).unwrap();
-    fs::write(root.join("steamapps/common/Game/game"), "game").unwrap();
-    fs::create_dir_all(root.join("appcache")).unwrap();
-    fs::write(root.join("appcache/appinfo.vdf"), "info").unwrap();
-    let (out, err) = expect(&s.run(&["steam", "status"]), 0);
-    assert!(out.contains("in Steam's folder"), "{out}");
-    assert!(err.contains("set `steam_library`"), "{err}");
-
-    // Without `steam_library`, the library stays.
-    let (out, _) = expect(&s.run(&["steam", "relocate"]), 0);
-    assert!(out.contains("appcache: moved to"), "{out}");
-    assert!(!out.contains("library"), "{out}");
-    let cache = s.root().join("cache/steam");
-    assert_eq!(
-        fs::read_link(root.join("appcache")).unwrap(),
-        cache.join("appcache")
-    );
-    assert_eq!(
-        fs::read_link(root.join("logs")).unwrap(),
-        s.root().join("state/steam/logs")
-    );
-
-    let library = s.root().join("games/steam");
-    s.write_config(
-        "config.toml",
-        &format!("steam_library = \"{}\"\n", library.display()),
-    );
-    let (out, _) = expect(&s.run(&["steam", "relocate"]), 0);
-    // The shader cache moved with the first run, and goes along as a link.
-    assert_eq!(
-        out,
-        format!(
-            "library: moved to {}\n",
-            library.join("steamapps").display()
-        )
-    );
-    assert_eq!(
-        fs::read_link(library.join("steamapps/shadercache")).unwrap(),
-        cache.join("shadercache")
-    );
-    assert_eq!(
-        fs::read_to_string(library.join("steamapps/common/Game/game")).unwrap(),
-        "game"
-    );
-    assert_eq!(
-        fs::read_to_string(root.join("steamapps/common/Game/game")).unwrap(),
-        "game"
-    );
-    let (out, _) = expect(&s.run(&["steam", "relocate"]), 0);
-    assert_eq!(out, "");
-
-    // With the key gone, the moved library is shown and left alone.
-    s.write_config("config.toml", "");
-    let (out, err) = expect(&s.run(&["steam", "status"]), 0);
-    assert!(out.contains("`steam_library` unset"), "{out}");
-    assert!(!err.contains("set `steam_library`"), "{err}");
-    let (out, err) = expect(&s.run(&["steam", "relocate", "--undo"]), 0);
-    assert!(!out.contains("library"), "{out}");
-    assert!(err.contains("the library stays at"), "{err}");
-    assert!(
-        fs::symlink_metadata(root.join("steamapps"))
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
-    s.write_config(
-        "config.toml",
-        &format!("steam_library = \"{}\"\n", library.display()),
-    );
-    let (out, _) = expect(&s.run(&["steam", "relocate", "--undo"]), 0);
-    assert!(
-        out.ends_with(
-            "library: back in {}\n"
-                .replace("{}", &root.join("steamapps").display().to_string())
-                .as_str()
-        ),
-        "{out}"
-    );
-    for dir in ["steamapps", "appcache", "logs"] {
-        assert!(
-            !fs::symlink_metadata(root.join(dir))
-                .unwrap()
-                .file_type()
-                .is_symlink(),
-            "{dir}"
-        );
-    }
-    assert_eq!(
-        fs::read_to_string(root.join("appcache/appinfo.vdf")).unwrap(),
-        "info"
-    );
-    assert!(!library.join("steamapps").exists());
+    s.write_config("config.toml", "steam_library = \"~/games\"\n");
+    let (_, err) = expect(&s.run(&["list"]), 0);
+    assert!(err.contains("gaki-cli steam relocate"), "{err}");
+    let (_, err) = expect(&s.run(&["steam", "relocate"]), 2);
+    assert!(err.contains("relocate"), "{err}");
 }
 
 #[cfg(feature = "download")]
