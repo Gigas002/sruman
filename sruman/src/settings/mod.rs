@@ -87,6 +87,8 @@ pub struct Settings {
     pub shell: Option<PathBuf>,
     /// `$VISUAL` or `$EDITOR` (may include arguments), for `profiles edit`.
     pub editor: Option<String>,
+    /// `config.toml` still sets `steam_library`, which sruman ignores now.
+    pub stale_steam_library: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,12 +106,6 @@ pub struct Dirs {
     pub data_home: PathBuf,
     /// `steam_dir` from `config.toml`, absolute.
     pub steam_dir: Option<PathBuf>,
-    /// `steam_library` from `config.toml`, absolute.
-    pub steam_library: Option<PathBuf>,
-    /// `$XDG_CACHE_HOME` and `$XDG_STATE_HOME`, where `steam relocate`
-    /// puts Steam's caches and logs.
-    pub cache_home: PathBuf,
-    pub state_home: PathBuf,
 }
 
 /// The channel of each runtime.
@@ -241,7 +237,6 @@ impl Settings {
             }
         };
         let steam_dir = absolute("steam_dir", file.steam_dir.as_deref())?;
-        let steam_library = absolute("steam_library", file.steam_library.as_deref())?;
         let catalog = Catalog::builtin()
             .with_overrides(&file.runtime)
             .map_err(|errors| SettingsError::Catalog {
@@ -313,6 +308,7 @@ impl Settings {
             search_path,
             shell,
             editor,
+            stale_steam_library: file.steam_library.is_some(),
             dirs: Dirs {
                 home: xdg.home,
                 cwd: env.cwd,
@@ -321,9 +317,6 @@ impl Settings {
                 prefix_root,
                 data_home: xdg.data_home,
                 steam_dir,
-                steam_library,
-                cache_home: xdg.cache_home,
-                state_home: xdg.state_home,
             },
         })
     }

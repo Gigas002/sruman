@@ -40,11 +40,10 @@ from, how they're checked, troubleshooting). Examples are in
   `[slr]` section.
 - **Steam on sruman's runtimes.** `sruman steam link` replaces Steam's own
   runtimes (its client's `steamrt3c` and the game runtimes) with links to
-  the same builds, so Steam runs on sruman's; `sruman steam relocate`
-  moves Steam's library, caches and logs out of its folder (to
-  `steam_library`, `~/.cache/steam`, `~/.local/state/steam`), so the folder
-  keeps only the client. Both undo (`steam unlink`, `steam relocate
-  --undo`). See [Steam](docs/USAGE.md#steam).
+  the same builds, so Steam runs on sruman's; `steam unlink` undoes it.
+  See [Steam](docs/USAGE.md#steam). Moving Steam's library, caches and logs
+  out of its folder is [gaki](https://github.com/Gigas002/gaki)'s
+  (`gaki-cli steam relocate`).
 - **Library first.** `libsruman` holds all the logic, so
   [lootrs](https://github.com/Gigas002/lootrs) and
   [gaki](https://github.com/Gigas002/gaki) can use it as an optional feature.
@@ -71,8 +70,7 @@ sruman status / stop hollow-knight        # running games / stop one
 sruman shell -p steamrt4                  # a shell in the profile's runtime and prefix
 sruman provide-umu --appid 4183110        # hand steamrt4 to umu (UMU_FOLDERS_PATH, no umu downloads)
 sruman steam link                         # Steam on sruman's runtimes (links in place of Steam's copies)
-sruman steam relocate                     # Steam's library, caches and logs out of its folder
-sruman steam status / verify / clean      # where everything is; check; drop builds Steam wrote over
+sruman steam status / verify / clean      # what Steam links to; check; drop builds Steam wrote over
 sruman doctor                             # check the system (user namespaces, runtime self-test)
 ```
 

@@ -137,7 +137,11 @@ fn the_example_config_has_every_key() {
     let full = uncommented(&repo("examples/config.toml"));
     let value: toml::Value = toml::from_str(&full).unwrap();
     let table = value.as_table().unwrap();
-    for key in config_keys() {
+    // Read only to warn that it does nothing now (it moved to gaki).
+    for key in config_keys()
+        .into_iter()
+        .filter(|key| key != "steam_library")
+    {
         assert!(
             table.contains_key(&key),
             "examples/config.toml lacks `{key}`"
